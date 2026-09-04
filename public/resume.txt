@@ -1,0 +1,38 @@
+ALEX MORGAN
+Data, AI, Code & Design
+
+PROFILE
+Engineering student working across data analytics, AI engineering, software, and interface design. I turn complex systems into useful, thoughtful digital experiences.
+
+FOCUS
+Data analytics | Data science | AI workflows | Full-stack development | Product design
+
+SELECTED SKILLS
+Python
+SQL
+Power BI
+React
+TypeScript
+Figma
+Generative AI
+Data Visualization
+Git / GitHub
+
+EXPERIENCE
+Engineering student | 2025 - now
+Building strong foundations in computer science, statistics, and software engineering.
+
+Independent projects | 2024 - 25
+Exploring dashboards, AI workflows, web products, and interfaces through hands-on experiments.
+
+SELECTED PROJECTS
+Signal / Sales Intelligence - Executive sales dashboard using Power BI, SQL, and DAX.
+Asteria Forecasting Lab - Demand-pattern exploration with Python, Pandas, and Scikit-learn.
+Prompt Atlas - Generative AI prompt workspace built with React and LLM APIs.
+Northstar Commerce - Responsive storefront concept using TypeScript, React, and REST.
+
+CONTACT
+Email: hariharanp3506@gmail.com
+GitHub: https://github.com
+LinkedIn: https://www.linkedin.com
+Location: India / open to the world
