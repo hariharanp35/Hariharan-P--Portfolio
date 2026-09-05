@@ -1,11 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowDown,
   ArrowUp,
   ArrowUpRight,
   BarChart3,
-  Bot,
   Braces,
   Check,
   ExternalLink,
@@ -13,13 +12,18 @@ import {
   Github,
   Heart,
   Database,
+  Linkedin,
   Mail,
   MessageCircle,
   Menu,
+  Mic,
+  MicOff,
   MapPin,
   Moon,
   Phone,
   Send,
+  Volume2,
+  VolumeX,
   Server,
   Sparkles,
   Sun,
@@ -42,7 +46,26 @@ type ChatMessage = {
   id: number;
   text: string;
   sender: "bot" | "visitor";
+  time: string;
 };
+
+interface SpeechRecognitionLike {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  onresult: ((event: any) => void) | null;
+  onerror: ((event: any) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+}
+
+declare global {
+  interface Window {
+    SpeechRecognition?: new () => SpeechRecognitionLike;
+    webkitSpeechRecognition?: new () => SpeechRecognitionLike;
+  }
+}
 const projects: Project[] = [
   {
     title: "Sales Performance Analysis Dashboard",
@@ -197,21 +220,67 @@ const resumeUrl = new URL(
 const portraitUrl = new URL("../Assets/Black1.jpeg", import.meta.url).href;
 const navSectionIds = [
   "about",
+  "skills",
   "education",
   "certifications",
   "achievements",
-  "skills",
   "projects",
   "experience",
   "contact",
 ];
+const chatbotName = "HP AI";
+const chatbotFullName = "HP AI Assistant";
 const initialChatMessage: ChatMessage = {
   id: 1,
   sender: "bot",
-  text: `Hi! I’m ${profile.firstName}’s portfolio assistant. Ask me about any section: About, Education, Certifications, Achievements, Skills, Projects, Experience, or Contact.`,
+  text: "Hi! 👋 I'm HP AI, your personal portfolio assistant. Ask me anything about Hariharan's skills, projects, education, certifications, technologies, or career interests.",
+  time: new Date().toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  }),
 };
+const hpAiSuggestedQuestions = [
+  "👋 Who is Hariharan?",
+  "💻 What are his skills?",
+  "🚀 Tell me about his projects",
+  "📊 What data analytics skills does he have?",
+  "🛠️ What technologies does he use?",
+  "📜 What certifications does he have?",
+  "🎓 What is his education?",
+  "📞 How can I contact him?",
+];
 const getChatReply = (question: string) => {
   const normalized = question.toLowerCase();
+  if (
+    normalized.includes("what is data science") ||
+    normalized.includes("define data science")
+  ) {
+    return "Data Science combines statistics, programming, and domain knowledge to collect, clean, analyze, and model data. It helps turn raw information into insights, predictions, and better decisions using tools such as Python, SQL, Pandas, and visualization platforms.";
+  }
+  if (
+    normalized.includes("what is python") ||
+    normalized.includes("define python")
+  ) {
+    return "Python is a general-purpose programming language known for readable syntax and a large ecosystem. It is widely used for automation, web development, data analysis, machine learning, APIs, and scripting.";
+  }
+  if (normalized.includes("what is sql") || normalized.includes("define sql")) {
+    return "SQL, or Structured Query Language, is used to work with relational databases. You can use it to retrieve, filter, join, group, insert, update, and analyze structured data in systems such as MySQL.";
+  }
+  if (
+    normalized.includes("machine learning") ||
+    normalized.includes("what is ml")
+  ) {
+    return "Machine learning is a branch of AI in which algorithms learn patterns from data to make predictions or decisions. A typical workflow includes preparing data, training a model, evaluating it, and improving its performance.";
+  }
+  if (normalized.includes("power bi")) {
+    return "Power BI is Microsoft's business intelligence platform for connecting to data, transforming it, building data models, and creating interactive reports and dashboards. DAX is commonly used for calculated columns and measures.";
+  }
+  if (
+    normalized.includes("sql and excel") ||
+    normalized.includes("excel and sql")
+  ) {
+    return "SQL is best for querying and transforming structured data in a database, especially when datasets are large or shared across systems. Excel is best for quick analysis, formulas, exploration, and presentation. They are often used together: SQL prepares the data and Excel helps communicate or inspect it.";
+  }
   if (normalized.includes("education") || normalized.includes("study")) {
     return `${profile.firstName} is pursuing a B.Tech in Artificial Intelligence and Data Science at Annapoorana Engineering College, Salem, from 2023 to 2027. His CGPA is 8.18 as of Semester 6. He completed Higher Secondary with 60% and Secondary School with a Pass result at Municipal Boys Higher Secondary School, Ammapet, Salem.`;
   }
@@ -252,7 +321,47 @@ const getChatReply = (question: string) => {
   ) {
     return `${profile.firstName} works where data, AI, code, and design overlap, with a focus on turning complex systems into useful, thoughtful digital experiences.`;
   }
-  return `I can answer questions about ${profile.firstName}’s About, Education, Certifications, Achievements, Skills, Projects, Experience, and Contact sections. Try one of those topics.`;
+  return `I can help with general questions about data science, Python, SQL, machine learning, Power BI, and Excel, as well as ${profile.firstName}'s portfolio, skills, projects, education, certifications, experience, and contact details.`;
+};
+const createTimeStamp = () =>
+  new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+const askPortfolioAssistant = async (
+  history: ChatMessage[],
+  question: string,
+): Promise<string> => {
+  const sanitizedQuestion = question.trim();
+
+  if (!sanitizedQuestion) {
+    return "Please enter a question before sending it.";
+  }
+
+  try {
+    const response = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: history
+          .filter((message) => message.text.trim())
+          .map((message) => ({
+            role: message.sender === "bot" ? "assistant" : "user",
+            content: message.text,
+          })),
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = (await response.json().catch(() => null)) as {
+        error?: string;
+      };
+      throw new Error(errorData?.error || "AI service unavailable");
+    }
+
+    const data = (await response.json()) as { reply?: string };
+    return data.reply?.trim() || getChatReply(sanitizedQuestion);
+  } catch (error) {
+    console.error(`${chatbotName} request failed:`, error);
+    return getChatReply(sanitizedQuestion);
+  }
 };
 const reveal = {
   hidden: { opacity: 0, y: 24 },
@@ -263,9 +372,76 @@ const reveal = {
   },
 };
 
+function CustomCursor() {
+  const dotRef = useRef<HTMLSpanElement | null>(null);
+  const ringRef = useRef<HTMLSpanElement | null>(null);
+
+  useEffect(() => {
+    const pointerQuery = window.matchMedia(
+      "(hover: hover) and (pointer: fine)",
+    );
+    if (!pointerQuery.matches) return;
+
+    let targetX = window.innerWidth / 2;
+    let targetY = window.innerHeight / 2;
+    let ringX = targetX;
+    let ringY = targetY;
+    let frame = 0;
+
+    const render = () => {
+      ringX += (targetX - ringX) * 0.16;
+      ringY += (targetY - ringY) * 0.16;
+      if (dotRef.current) {
+        dotRef.current.style.transform = `translate3d(${targetX}px, ${targetY}px, 0)`;
+      }
+      if (ringRef.current) {
+        ringRef.current.style.transform = `translate3d(${ringX}px, ${ringY}px, 0)`;
+      }
+      frame = requestAnimationFrame(render);
+    };
+
+    const onMove = (event: MouseEvent) => {
+      targetX = event.clientX;
+      targetY = event.clientY;
+      const target = event.target as HTMLElement | null;
+      const interactive = target?.closest(
+        "a, button, input, textarea, [role=button]",
+      );
+      const project = target?.closest(".project-card");
+      const image = target?.closest("img, .project-image");
+      const hovering = Boolean(interactive || image);
+      ringRef.current?.classList.toggle("cursor-hover", hovering);
+      dotRef.current?.classList.toggle("cursor-hover", hovering);
+      ringRef.current?.classList.toggle("cursor-project", Boolean(project));
+    };
+
+    const onClick = () => {
+      ringRef.current?.classList.remove("cursor-click");
+      void ringRef.current?.offsetWidth;
+      ringRef.current?.classList.add("cursor-click");
+    };
+
+    document.addEventListener("mousemove", onMove, { passive: true });
+    document.addEventListener("click", onClick, { passive: true });
+    frame = requestAnimationFrame(render);
+    return () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("click", onClick);
+      cancelAnimationFrame(frame);
+    };
+  }, []);
+
+  return (
+    <>
+      <span ref={dotRef} className="custom-cursor-dot" aria-hidden="true" />
+      <span ref={ringRef} className="custom-cursor-ring" aria-hidden="true" />
+    </>
+  );
+}
+
 function App() {
   const [theme, setTheme] = useState(
-    () => localStorage.getItem("theme") || "dark",
+    () => localStorage.getItem("theme") || "light",
   );
   const [filter, setFilter] = useState("All");
   const [menuOpen, setMenuOpen] = useState(false);
@@ -277,13 +453,24 @@ function App() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     initialChatMessage,
   ]);
+  const [isListening, setIsListening] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [voiceSupported, setVoiceSupported] = useState(false);
+  const [speechError, setSpeechError] = useState("");
+  const recognitionRef = useRef<any>(null);
+  const chatBottomRef = useRef<HTMLDivElement | null>(null);
   const [activeSection, setActiveSection] = useState("about");
+  const [pageLoading, setPageLoading] = useState(true);
+  useEffect(() => {
+    const loadingTimer = window.setTimeout(() => setPageLoading(false), 420);
+    return () => window.clearTimeout(loadingTimer);
+  }, []);
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem("theme", theme);
   }, [theme]);
   useEffect(() => {
-    const onScroll = () =>
+    const onScroll = () => {
       setScrolled(
         Math.min(
           100,
@@ -291,6 +478,8 @@ function App() {
             100,
         ),
       );
+      if (window.scrollY < 120) setActiveSection("top");
+    };
     window.addEventListener("scroll", onScroll);
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
@@ -310,37 +499,142 @@ function App() {
     sections.forEach((section) => observer.observe(section));
     return () => observer.disconnect();
   }, []);
+  useEffect(() => {
+    const SpeechRecognitionClass =
+      window.SpeechRecognition ||
+      (window as any).webkitSpeechRecognition ||
+      null;
+    setVoiceSupported(Boolean(SpeechRecognitionClass));
+
+    if (!SpeechRecognitionClass) return;
+
+    const recognition = new SpeechRecognitionClass();
+    recognition.lang = "en-US";
+    recognition.continuous = false;
+    recognition.interimResults = false;
+
+    recognition.onresult = (event: any) => {
+      const transcript = Array.from(event.results)
+        .map((result: any) => result[0]?.transcript || "")
+        .join(" ")
+        .trim();
+      if (transcript) setChatInput(transcript);
+    };
+
+    recognition.onerror = () => {
+      setSpeechError("Voice recognition is unavailable right now.");
+      setIsListening(false);
+    };
+
+    recognition.onend = () => setIsListening(false);
+    recognitionRef.current = recognition;
+
+    return () => {
+      recognition.stop();
+    };
+  }, []);
+  useEffect(() => {
+    chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatMessages, chatTyping]);
   const shown =
     filter === "All" ? projects : projects.filter((p) => p.category === filter);
   const nav = [
-    "About",
-    "Education",
-    "Certifications",
-    "Achievements",
-    "Skills",
-    "Projects",
-    "Experience",
-    "Contact",
+    { label: "Home", id: "top" },
+    { label: "About", id: "about" },
+    { label: "Skills", id: "skills" },
+    { label: "Education", id: "education" },
+    { label: "Certifications", id: "certifications" },
+    { label: "Achievements", id: "achievements" },
+    { label: "Projects", id: "projects" },
+    { label: "Experience", id: "experience" },
+    { label: "Contact", id: "contact" },
   ];
-  const sendChatMessage = (message: string) => {
+  const startVoiceCapture = () => {
+    if (!voiceSupported || !recognitionRef.current) {
+      setSpeechError("Speech recognition is not supported in this browser.");
+      return;
+    }
+
+    if (isListening) {
+      recognitionRef.current.stop();
+      setIsListening(false);
+      return;
+    }
+
+    setSpeechError("");
+    recognitionRef.current.start();
+    setIsListening(true);
+  };
+  const speakText = (text: string) => {
+    if (!("speechSynthesis" in window)) {
+      setSpeechError("Text-to-speech is not supported in this browser.");
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+    setSpeechError("");
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    utterance.onstart = () => setIsSpeaking(true);
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => {
+      setIsSpeaking(false);
+      setSpeechError("Unable to play the AI response.");
+    };
+    window.speechSynthesis.speak(utterance);
+  };
+  const stopSpeaking = () => {
+    window.speechSynthesis?.cancel();
+    setIsSpeaking(false);
+  };
+  const sendChatMessage = async (message: string) => {
     const trimmed = message.trim();
     if (!trimmed || chatTyping) return;
+
+    const userMessage: ChatMessage = {
+      id: Date.now(),
+      sender: "visitor",
+      text: trimmed,
+      time: createTimeStamp(),
+    };
+    const historySnapshot = [...chatMessages, userMessage];
+
+    setChatMessages(historySnapshot);
+    setChatInput("");
+    setSpeechError("");
+    setChatTyping(true);
+
+    const reply = await askPortfolioAssistant(historySnapshot, trimmed);
+
     setChatMessages((current) => [
       ...current,
-      { id: Date.now(), sender: "visitor", text: trimmed },
+      {
+        id: Date.now() + 1,
+        sender: "bot",
+        text: reply,
+        time: createTimeStamp(),
+      },
     ]);
-    setChatInput("");
-    setChatTyping(true);
-    window.setTimeout(() => {
-      setChatMessages((current) => [
-        ...current,
-        { id: Date.now() + 1, sender: "bot", text: getChatReply(trimmed) },
-      ]);
-      setChatTyping(false);
-    }, 650);
+    setChatTyping(false);
   };
   return (
     <div className="app">
+      <CustomCursor />
+      <AnimatePresence>
+        {pageLoading && (
+          <motion.div
+            className="page-loader"
+            initial={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.35, ease: "easeOut" }}
+            aria-label="Loading portfolio"
+          >
+            <span className="page-loader-mark">HP</span>
+            <span className="page-loader-line" />
+          </motion.div>
+        )}
+      </AnimatePresence>
       <div className="scroll-progress" style={{ width: `${scrolled}%` }} />
       <header className="nav-wrap">
         <nav className="nav container">
@@ -367,42 +661,68 @@ function App() {
           <div className={`nav-links ${menuOpen ? "open" : ""}`}>
             {nav.map((item) => (
               <a
-                key={item}
-                className={activeSection === item.toLowerCase() ? "active" : ""}
-                href={`#${item.toLowerCase()}`}
-                aria-current={
-                  activeSection === item.toLowerCase() ? "page" : undefined
-                }
-                onClick={() => {
-                  setActiveSection(item.toLowerCase());
+                key={item.id}
+                className={activeSection === item.id ? "active" : ""}
+                href={`#${item.id}`}
+                aria-current={activeSection === item.id ? "page" : undefined}
+                onClick={(event) => {
+                  event.preventDefault();
+                  document
+                    .getElementById(item.id)
+                    ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  setActiveSection(item.id);
                   setMenuOpen(false);
                 }}
               >
-                {item}
+                {item.label}
               </a>
             ))}
+          </div>
+          <div className="nav-tools">
+            <button
+              className="icon-btn menu-btn"
+              aria-label="Toggle menu"
+              onClick={() => setMenuOpen(!menuOpen)}
+            >
+              {menuOpen ? <X /> : <Menu />}
+            </button>
+            <button
+              className="icon-btn theme-btn"
+              aria-label="Toggle theme"
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            >
+              {theme === "dark" ? <Sun /> : <Moon />}
+            </button>
+            <div className="nav-socials" aria-label="Social links">
+              <a
+                className="icon-btn social-btn"
+                href={githubUrl}
+                target="_blank"
+                rel="noreferrer"
+                aria-label="Open GitHub profile"
+                title="GitHub"
+              >
+                <Github size={18} />
+              </a>
+              <a
+                className="icon-btn social-btn"
+                href={linkedinUrl}
+                target="_blank"
+                rel="noreferrer"
+                aria-label="Open LinkedIn profile"
+                title="LinkedIn"
+              >
+                <Linkedin size={18} />
+              </a>
+            </div>
             <a
               className="nav-cta"
               href="#contact"
               onClick={() => setMenuOpen(false)}
             >
-              Let's talk <ArrowUpRight size={15} />
+              Let's talk <ArrowUpRight size={13} />
             </a>
           </div>
-          <button
-            className="icon-btn menu-btn"
-            aria-label="Toggle menu"
-            onClick={() => setMenuOpen(!menuOpen)}
-          >
-            {menuOpen ? <X /> : <Menu />}
-          </button>
-          <button
-            className="icon-btn theme-btn"
-            aria-label="Toggle theme"
-            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-          >
-            {theme === "dark" ? <Sun /> : <Moon />}
-          </button>
         </nav>
       </header>
       <main id="top">
@@ -423,14 +743,14 @@ function App() {
               animate={{ opacity: 1 }}
               transition={{ delay: 0.2 }}
             >
-              Portfolio / 2026
+              AI &amp; Data Science / Portfolio
             </motion.p>
             <motion.h1
               initial="hidden"
               animate="visible"
               variants={{ visible: { transition: { staggerChildren: 0.08 } } }}
             >
-              {["Data.", "AI.", "Code.", "Design."].map((word) => (
+              {["Hariharan", "P."].map((word) => (
                 <motion.span
                   key={word}
                   variants={{
@@ -446,6 +766,9 @@ function App() {
                 </motion.span>
               ))}
             </motion.h1>
+            <p className="hero-role">
+              AI &amp; Data Science Student <span>|</span> Aspiring Data Analyst
+            </p>
             <motion.p
               className="hero-lede"
               variants={reveal}
@@ -462,13 +785,13 @@ function App() {
               transition={{ delay: 0.8 }}
             >
               <a className="button button-primary" href="#projects">
-                View selected work <ArrowDown size={17} />
+                View Projects <ArrowDown size={17} />
               </a>
               <a className="button button-secondary" href={resumeUrl} download>
                 Download resume <FileDown size={17} />
               </a>
               <a className="text-link" href="#contact">
-                Let's connect <ArrowUpRight size={17} />
+                Contact Me <ArrowUpRight size={17} />
               </a>
             </motion.div>
           </div>
@@ -1097,24 +1420,30 @@ function App() {
               initial={{ opacity: 0, y: 18, scale: 0.96 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 18, scale: 0.96 }}
-              aria-label="About Hariharan chat"
+              aria-label={`${chatbotFullName}, Personal Portfolio Assistant`}
             >
               <div className="chat-header">
-                <div className="chat-avatar">
-                  <Bot size={17} />
+                <div
+                  className="chat-avatar chat-avatar-symbol"
+                  aria-hidden="true"
+                >
+                  ⌬
                 </div>
                 <div>
-                  <strong>{`Ask ${profile.firstName}`}</strong>
+                  <strong>{chatbotName}</strong>
                   <span>
-                    <i /> Portfolio assistant
+                    <i /> Personal Portfolio Assistant
                   </span>
                 </div>
+                <span className="chat-status-badge">⌬ ONLINE</span>
                 <button
                   className="chat-close"
-                  aria-label="Close chat"
+                  type="button"
+                  title="Close HP AI"
+                  aria-label="Close HP AI chat"
                   onClick={() => setChatOpen(false)}
                 >
-                  <X size={17} />
+                  <X size={18} strokeWidth={2.5} />
                 </button>
               </div>
               <div className="chat-messages" aria-live="polite">
@@ -1125,28 +1454,38 @@ function App() {
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                   >
-                    {message.text}
+                    <div className="chat-bubble-content">{message.text}</div>
+                    <span className="chat-time">{message.time}</span>
+                    {message.sender === "bot" && (
+                      <button
+                        type="button"
+                        className="chat-speaker"
+                        aria-label="Read HP AI reply aloud"
+                        onClick={() =>
+                          isSpeaking ? stopSpeaking() : speakText(message.text)
+                        }
+                      >
+                        {isSpeaking ? (
+                          <VolumeX size={12} />
+                        ) : (
+                          <Volume2 size={12} />
+                        )}
+                      </button>
+                    )}
                   </motion.div>
                 ))}
                 {chatTyping && (
-                  <div className="chat-typing" aria-label="Assistant is typing">
+                  <div className="chat-typing" aria-label="HP AI is thinking">
+                    <span className="chat-typing-label">HP AI thinking</span>
                     <i />
                     <i />
                     <i />
                   </div>
                 )}
+                <div ref={chatBottomRef} />
               </div>
               <div className="chat-quick-replies">
-                {[
-                  "About",
-                  "Education",
-                  "Certifications",
-                  "Achievements",
-                  "Skills",
-                  "Projects",
-                  "Experience",
-                  "Contact Me",
-                ].map((prompt) => (
+                {hpAiSuggestedQuestions.map((prompt) => (
                   <button key={prompt} onClick={() => sendChatMessage(prompt)}>
                     {prompt}
                   </button>
@@ -1159,19 +1498,78 @@ function App() {
                   sendChatMessage(chatInput);
                 }}
               >
-                <input
+                <button
+                  type="button"
+                  className={`voice-toggle ${isListening ? "active" : ""}`}
+                  aria-label={
+                    isListening
+                      ? "Stop HP AI voice input"
+                      : "Start HP AI voice input"
+                  }
+                  onClick={startVoiceCapture}
+                  disabled={!voiceSupported}
+                >
+                  {isListening ? <MicOff size={16} /> : <Mic size={16} />}
+                </button>
+                <textarea
                   value={chatInput}
                   onChange={(event) => setChatInput(event.target.value)}
-                  placeholder="Ask a question..."
+                  placeholder={
+                    voiceSupported
+                      ? "Ask a question..."
+                      : "Voice input unavailable"
+                  }
                   aria-label="Ask a question"
+                  rows={1}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
+                      sendChatMessage(chatInput);
+                    }
+                  }}
                 />
                 <button type="submit" aria-label="Send question">
                   <Send size={16} />
                 </button>
               </form>
+              {(isListening || isSpeaking || speechError) && (
+                <div
+                  className={`chat-voice-status ${isListening ? "listening" : ""} ${isSpeaking ? "speaking" : ""}`}
+                  role="status"
+                  aria-live="polite"
+                >
+                  {isListening ? (
+                    <>
+                      <Mic size={13} /> <strong>HP AI Listening...</strong>
+                      <span className="voice-wave" aria-hidden="true">
+                        <i />
+                        <i />
+                        <i />
+                        <i />
+                      </span>
+                    </>
+                  ) : isSpeaking ? (
+                    <>
+                      <Volume2 size={13} />{" "}
+                      <strong>HP AI is speaking...</strong>
+                      <span className="voice-wave" aria-hidden="true">
+                        <i />
+                        <i />
+                        <i />
+                        <i />
+                      </span>
+                    </>
+                  ) : (
+                    <span>{speechError}</span>
+                  )}
+                </div>
+              )}
               <button
                 className="chat-reset"
-                onClick={() => setChatMessages([initialChatMessage])}
+                onClick={() => {
+                  setChatMessages([initialChatMessage]);
+                  stopSpeaking();
+                }}
               >
                 Reset conversation
               </button>
@@ -1181,9 +1579,12 @@ function App() {
         <button
           className="chat-launcher"
           onClick={() => setChatOpen(!chatOpen)}
-          aria-label={chatOpen ? "Close chat" : "Open chat"}
+          title={chatOpen ? "Close HP AI" : "Open HP AI"}
+          aria-label={chatOpen ? "Close HP AI chat" : "Open HP AI chat"}
         >
-          {chatOpen ? <X size={21} /> : <MessageCircle size={21} />}
+          <span className="chat-symbol" aria-hidden="true">
+            ⌬
+          </span>
           {!chatOpen && <span className="chat-pulse" />}
         </button>
       </div>
@@ -1212,6 +1613,9 @@ function App() {
           <span className="footer-quote">
             The journey of a thousand miles begins with a single step
             <Heart size={12} fill="currentColor" aria-label="with heart" />
+          </span>
+          <span className="footer-role">
+            AI &amp; Data Science | Data Analytics | Technology
           </span>
           <a href="#top">
             Back to top <ArrowUp size={15} />
