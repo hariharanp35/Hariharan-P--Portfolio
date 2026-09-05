@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import LoadingScreen from "./LoadingScreen";
 import {
   ArrowDown,
   ArrowUp,
   ArrowUpRight,
   BarChart3,
+  Bot,
   Braces,
   Check,
+  Cpu,
   ExternalLink,
   FileDown,
   Github,
@@ -20,8 +23,11 @@ import {
   MicOff,
   MapPin,
   Moon,
+  Pause,
   Phone,
+  Play,
   Send,
+  Square,
   Volume2,
   VolumeX,
   Server,
@@ -321,7 +327,40 @@ const getChatReply = (question: string) => {
   ) {
     return `${profile.firstName} works where data, AI, code, and design overlap, with a focus on turning complex systems into useful, thoughtful digital experiences.`;
   }
-  return `I can help with general questions about data science, Python, SQL, machine learning, Power BI, and Excel, as well as ${profile.firstName}'s portfolio, skills, projects, education, certifications, experience, and contact details.`;
+  const generalTopics: Record<string, string> = {
+    "cloud computing":
+      "Cloud computing delivers computing resources such as servers, storage, databases, and services over the internet. It supports elastic scaling and pay-as-you-go usage through models such as IaaS, PaaS, and SaaS.",
+    "operating system":
+      "An operating system manages hardware and provides services for applications. Its responsibilities include process and memory management, file systems, device control, security, and user interfaces.",
+    oop: "Object-oriented programming organizes software around objects that combine state and behavior. Encapsulation, abstraction, inheritance, and polymorphism are its commonly taught principles.",
+    "rest api":
+      "A REST API exposes resources over HTTP using predictable URLs and methods such as GET, POST, PUT, PATCH, and DELETE. Good APIs use clear representations, status codes, validation, and authentication.",
+    "what is git":
+      "Git is a distributed version-control system. It records changes as commits, supports branches for parallel work, and lets teams review and merge changes safely.",
+    cybersecurity:
+      "Cybersecurity protects systems, networks, applications, and data from unauthorized access or disruption. Core practices include least privilege, strong authentication, patching, backups, encryption, and monitoring.",
+    "neural network":
+      "A neural network is a model made of connected layers that learn weighted patterns from data. During training, it adjusts weights to reduce a loss function and improve predictions.",
+    "computer vision":
+      "Computer vision enables software to interpret images and video. Common tasks include classification, object detection, segmentation, optical character recognition, and image generation.",
+    react:
+      "React is a JavaScript library for building user interfaces from reusable components. State and props describe UI data, while React updates the rendered output when that data changes.",
+    dbms: "A DBMS stores, organizes, secures, and retrieves data. It provides querying, transactions, concurrency control, constraints, backups, and administration for databases.",
+    "tcp and udp":
+      "TCP is connection-oriented and provides reliable, ordered delivery with flow control. UDP is connectionless and lightweight, trading delivery guarantees for lower overhead and latency.",
+    algorithm:
+      "An algorithm is a finite, precise procedure for solving a problem. Good algorithm design considers correctness, time complexity, space complexity, and the constraints of the input.",
+    "generative ai":
+      "Generative AI models learn patterns in data and produce new text, images, audio, code, or other content. Results depend on the model, its training data, the prompt, and evaluation safeguards.",
+    api: "An API is a contract that lets software systems communicate. It defines available operations, inputs, outputs, errors, authentication, and sometimes rate limits.",
+  };
+  const match = Object.entries(generalTopics).find(([topic]) =>
+    normalized.includes(topic),
+  );
+  return (
+    match?.[1] ||
+    "I could not find that detail in the portfolio, but I can still explain general Computer Science, Software Engineering, AI, web, cloud, cybersecurity, and data concepts. Please try asking the question another way."
+  );
 };
 const createTimeStamp = () =>
   new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -360,7 +399,7 @@ const askPortfolioAssistant = async (
     return data.reply?.trim() || getChatReply(sanitizedQuestion);
   } catch (error) {
     console.error(`${chatbotName} request failed:`, error);
-    return getChatReply(sanitizedQuestion);
+    return "Sorry, I couldn't process that right now. Please try again.";
   }
 };
 const reveal = {
@@ -405,14 +444,21 @@ function CustomCursor() {
       targetY = event.clientY;
       const target = event.target as HTMLElement | null;
       const interactive = target?.closest(
-        "a, button, input, textarea, [role=button]",
+        "a, button, input, textarea, [role=button], .skill-category-card, .project-card",
       );
       const project = target?.closest(".project-card");
       const image = target?.closest("img, .project-image");
       const hovering = Boolean(interactive || image);
+      ringRef.current?.classList.remove("cursor-out");
+      dotRef.current?.classList.remove("cursor-out");
       ringRef.current?.classList.toggle("cursor-hover", hovering);
       dotRef.current?.classList.toggle("cursor-hover", hovering);
       ringRef.current?.classList.toggle("cursor-project", Boolean(project));
+    };
+
+    const onLeave = () => {
+      ringRef.current?.classList.add("cursor-out");
+      dotRef.current?.classList.add("cursor-out");
     };
 
     const onClick = () => {
@@ -423,10 +469,12 @@ function CustomCursor() {
 
     document.addEventListener("mousemove", onMove, { passive: true });
     document.addEventListener("click", onClick, { passive: true });
+    document.documentElement.addEventListener("mouseleave", onLeave);
     frame = requestAnimationFrame(render);
     return () => {
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("click", onClick);
+      document.documentElement.removeEventListener("mouseleave", onLeave);
       cancelAnimationFrame(frame);
     };
   }, []);
@@ -445,6 +493,7 @@ function App() {
   );
   const [filter, setFilter] = useState("All");
   const [menuOpen, setMenuOpen] = useState(false);
+  const navWrapRef = useRef<HTMLElement | null>(null);
   const [sent, setSent] = useState(false);
   const [scrolled, setScrolled] = useState(0);
   const [chatOpen, setChatOpen] = useState(false);
@@ -455,22 +504,79 @@ function App() {
   ]);
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isSpeechPaused, setIsSpeechPaused] = useState(false);
+  const [speakingMessageId, setSpeakingMessageId] = useState<number | null>(
+    null,
+  );
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [voiceSupported, setVoiceSupported] = useState(false);
+  const [speechSupported, setSpeechSupported] = useState(false);
   const [speechError, setSpeechError] = useState("");
   const recognitionRef = useRef<any>(null);
+  const speechVoicesRef = useRef<SpeechSynthesisVoice[]>([]);
+  const speechRequestRef = useRef(0);
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
-  const [activeSection, setActiveSection] = useState("about");
+  const [activeSection, setActiveSection] = useState("top");
   const [pageLoading, setPageLoading] = useState(true);
+  const [contentRevealed, setContentRevealed] = useState(false);
+
+  // Keep the loading overlay lifecycle controlled by the page timer.
   useEffect(() => {
-    const loadingTimer = window.setTimeout(() => setPageLoading(false), 420);
+    const loadingTimer = window.setTimeout(() => {
+      setPageLoading(false);
+      // Small delay before revealing content for smooth transition
+      const revealTimer = window.setTimeout(() => setContentRevealed(true), 50);
+      return () => window.clearTimeout(revealTimer);
+    }, 3000);
     return () => window.clearTimeout(loadingTimer);
   }, []);
+  useEffect(() => {
+    if (!("speechSynthesis" in window)) return;
+
+    const updateSpeechVoices = () => {
+      speechVoicesRef.current = window.speechSynthesis.getVoices();
+      setSpeechSupported(true);
+    };
+
+    updateSpeechVoices();
+    window.speechSynthesis.addEventListener(
+      "voiceschanged",
+      updateSpeechVoices,
+    );
+    return () =>
+      window.speechSynthesis.removeEventListener(
+        "voiceschanged",
+        updateSpeechVoices,
+      );
+  }, []);
+  useEffect(() => {
+    if (!menuOpen) return;
+
+    const closeMenuOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenuOpen(false);
+    };
+
+    document.addEventListener("keydown", closeMenuOnEscape);
+    return () => document.removeEventListener("keydown", closeMenuOnEscape);
+  }, [menuOpen]);
+  useEffect(() => {
+    if (!menuOpen) return;
+
+    const closeMenuOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (target && !navWrapRef.current?.contains(target)) setMenuOpen(false);
+    };
+
+    document.addEventListener("pointerdown", closeMenuOnOutsidePointer);
+    return () =>
+      document.removeEventListener("pointerdown", closeMenuOnOutsidePointer);
+  }, [menuOpen]);
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem("theme", theme);
   }, [theme]);
   useEffect(() => {
-    const onScroll = () => {
+    const updateScrollState = () => {
       setScrolled(
         Math.min(
           100,
@@ -478,26 +584,23 @@ function App() {
             100,
         ),
       );
-      if (window.scrollY < 120) setActiveSection("top");
+
+      if (window.scrollY < 120) {
+        setActiveSection("top");
+        return;
+      }
+
+      const position = window.scrollY + 120;
+      const currentSection = navSectionIds.reduce((current, id) => {
+        const section = document.getElementById(id);
+        if (!section) return current;
+        return section.offsetTop <= position ? id : current;
+      }, "top");
+      setActiveSection(currentSection);
     };
-    window.addEventListener("scroll", onScroll);
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
-  useEffect(() => {
-    const sections = navSectionIds
-      .map((id) => document.getElementById(id))
-      .filter((section): section is HTMLElement => Boolean(section));
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const visibleSection = entries
-          .filter((entry) => entry.isIntersecting)
-          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
-        if (visibleSection) setActiveSection(visibleSection.target.id);
-      },
-      { rootMargin: "-22% 0px -62% 0px", threshold: [0.1, 0.3, 0.6] },
-    );
-    sections.forEach((section) => observer.observe(section));
-    return () => observer.disconnect();
+    updateScrollState();
+    window.addEventListener("scroll", updateScrollState, { passive: true });
+    return () => window.removeEventListener("scroll", updateScrollState);
   }, []);
   useEffect(() => {
     const SpeechRecognitionClass =
@@ -565,28 +668,99 @@ function App() {
     recognitionRef.current.start();
     setIsListening(true);
   };
-  const speakText = (text: string) => {
-    if (!("speechSynthesis" in window)) {
-      setSpeechError("Text-to-speech is not supported in this browser.");
+  const selectSpeechVoice = () => {
+    const voices = speechVoicesRef.current.length
+      ? speechVoicesRef.current
+      : window.speechSynthesis.getVoices();
+    const englishVoices = voices.filter((voice) =>
+      voice.lang.toLowerCase().startsWith("en"),
+    );
+    const candidates = englishVoices.length ? englishVoices : voices;
+    const femaleKeywords = [
+      "female",
+      "samantha",
+      "victoria",
+      "zira",
+      "jenny",
+      "aria",
+      "ava",
+      "karen",
+      "moira",
+      "fiona",
+      "susan",
+      "sonia",
+    ];
+    return [...candidates].sort((first, second) => {
+      const score = (voice: SpeechSynthesisVoice) => {
+        const name = voice.name.toLowerCase();
+        return (
+          femaleKeywords.reduce(
+            (total, keyword) => total + (name.includes(keyword) ? 3 : 0),
+            0,
+          ) +
+          (voice.localService ? 1 : 0) +
+          (name.includes("natural") ? 2 : 0)
+        );
+      };
+      return score(second) - score(first);
+    })[0];
+  };
+  const stopSpeaking = () => {
+    speechRequestRef.current += 1;
+    window.speechSynthesis?.cancel();
+    setIsSpeaking(false);
+    setIsSpeechPaused(false);
+    setSpeakingMessageId(null);
+  };
+  const speakText = (text: string, messageId: number) => {
+    if (!speechSupported || !("speechSynthesis" in window)) {
+      setSpeechError("Voice playback is unavailable on this device.");
+      return;
+    }
+    if (!voiceEnabled) {
+      setSpeechError("Voice playback is disabled. Enable voice in the header.");
       return;
     }
 
-    window.speechSynthesis.cancel();
+    if (speakingMessageId === messageId && window.speechSynthesis.speaking) {
+      if (window.speechSynthesis.paused) {
+        window.speechSynthesis.resume();
+        setIsSpeechPaused(false);
+      } else {
+        window.speechSynthesis.pause();
+        setIsSpeechPaused(true);
+      }
+      return;
+    }
+
+    stopSpeaking();
     setSpeechError("");
+    const requestId = speechRequestRef.current;
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 1;
-    utterance.pitch = 1;
-    utterance.onstart = () => setIsSpeaking(true);
-    utterance.onend = () => setIsSpeaking(false);
-    utterance.onerror = () => {
+    utterance.rate = 0.96;
+    utterance.pitch = 1.04;
+    utterance.volume = 0.95;
+    utterance.voice = selectSpeechVoice() || null;
+    utterance.onstart = () => {
+      if (speechRequestRef.current !== requestId) return;
+      setIsSpeaking(true);
+      setIsSpeechPaused(false);
+      setSpeakingMessageId(messageId);
+    };
+    utterance.onend = () => {
+      if (speechRequestRef.current !== requestId) return;
       setIsSpeaking(false);
-      setSpeechError("Unable to play the AI response.");
+      setIsSpeechPaused(false);
+      setSpeakingMessageId(null);
+    };
+    utterance.onerror = () => {
+      if (speechRequestRef.current !== requestId) return;
+      setIsSpeaking(false);
+      setIsSpeechPaused(false);
+      setSpeakingMessageId(null);
+      setSpeechError("Voice playback is unavailable on this device.");
     };
     window.speechSynthesis.speak(utterance);
-  };
-  const stopSpeaking = () => {
-    window.speechSynthesis?.cancel();
-    setIsSpeaking(false);
   };
   const sendChatMessage = async (message: string) => {
     const trimmed = message.trim();
@@ -621,1007 +795,1120 @@ function App() {
   return (
     <div className="app">
       <CustomCursor />
-      <AnimatePresence>
+      <AnimatePresence mode="wait">
         {pageLoading && (
-          <motion.div
-            className="page-loader"
-            initial={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.35, ease: "easeOut" }}
-            aria-label="Loading portfolio"
-          >
-            <span className="page-loader-mark">HP</span>
-            <span className="page-loader-line" />
-          </motion.div>
+          <LoadingScreen onComplete={() => setPageLoading(false)} />
         )}
       </AnimatePresence>
-      <div className="scroll-progress" style={{ width: `${scrolled}%` }} />
-      <header className="nav-wrap">
-        <nav className="nav container">
-          <motion.a
-            className="brand brand-name"
-            href="#top"
-            initial="hidden"
-            animate="visible"
-            variants={{ visible: { transition: { staggerChildren: 0.06 } } }}
+      <motion.div
+        className="content-wrapper"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: contentRevealed ? 1 : 0 }}
+        transition={{ duration: 0.6, ease: "easeOut" }}
+      >
+        <div className="scroll-progress" style={{ width: `${scrolled}%` }} />
+        <header ref={navWrapRef} className="nav-wrap">
+          <motion.nav
+            className="nav container"
+            initial={{ opacity: 0, y: -20 }}
+            animate={{
+              opacity: contentRevealed ? 1 : 0,
+              y: contentRevealed ? 0 : -20,
+            }}
+            transition={{ duration: 0.6, delay: 0.2, ease: "easeOut" }}
           >
-            {"Hariharan P".split("").map((character, index) => (
-              <motion.span
-                key={`${character}-${index}`}
-                variants={{
-                  hidden: { opacity: 0, y: 8 },
-                  visible: { opacity: 1, y: 0 },
-                }}
-                className={character === "P" ? "brand-accent" : ""}
-              >
-                {character === " " ? "\u00a0" : character}
-              </motion.span>
-            ))}
-          </motion.a>
-          <div className={`nav-links ${menuOpen ? "open" : ""}`}>
-            {nav.map((item) => (
-              <a
-                key={item.id}
-                className={activeSection === item.id ? "active" : ""}
-                href={`#${item.id}`}
-                aria-current={activeSection === item.id ? "page" : undefined}
-                onClick={(event) => {
-                  event.preventDefault();
-                  document
-                    .getElementById(item.id)
-                    ?.scrollIntoView({ behavior: "smooth", block: "start" });
-                  setActiveSection(item.id);
-                  setMenuOpen(false);
-                }}
-              >
-                {item.label}
-              </a>
-            ))}
-          </div>
-          <div className="nav-tools">
-            <button
-              className="icon-btn menu-btn"
-              aria-label="Toggle menu"
-              onClick={() => setMenuOpen(!menuOpen)}
-            >
-              {menuOpen ? <X /> : <Menu />}
-            </button>
-            <button
-              className="icon-btn theme-btn"
-              aria-label="Toggle theme"
-              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            >
-              {theme === "dark" ? <Sun /> : <Moon />}
-            </button>
-            <div className="nav-socials" aria-label="Social links">
-              <a
-                className="icon-btn social-btn"
-                href={githubUrl}
-                target="_blank"
-                rel="noreferrer"
-                aria-label="Open GitHub profile"
-                title="GitHub"
-              >
-                <Github size={18} />
-              </a>
-              <a
-                className="icon-btn social-btn"
-                href={linkedinUrl}
-                target="_blank"
-                rel="noreferrer"
-                aria-label="Open LinkedIn profile"
-                title="LinkedIn"
-              >
-                <Linkedin size={18} />
-              </a>
-            </div>
-            <a
-              className="nav-cta"
-              href="#contact"
-              onClick={() => setMenuOpen(false)}
-            >
-              Let's talk <ArrowUpRight size={13} />
-            </a>
-          </div>
-        </nav>
-      </header>
-      <main id="top">
-        <div className="ai-field" aria-hidden="true">
-          <span className="ai-node node-one" />
-          <span className="ai-node node-two" />
-          <span className="ai-node node-three" />
-          <span className="ai-node node-four" />
-          <span className="ai-connection connection-one" />
-          <span className="ai-connection connection-two" />
-          <span className="ai-connection connection-three" />
-        </div>
-        <section className="hero container">
-          <div className="hero-copy">
-            <motion.p
-              className="eyebrow"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.2 }}
-            >
-              AI &amp; Data Science / Portfolio
-            </motion.p>
-            <motion.h1
+            <motion.a
+              className="brand brand-name"
+              href="#top"
               initial="hidden"
               animate="visible"
-              variants={{ visible: { transition: { staggerChildren: 0.08 } } }}
+              variants={{ visible: { transition: { staggerChildren: 0.06 } } }}
             >
-              {["Hariharan", "P."].map((word) => (
+              {"Hariharan P".split("").map((character, index) => (
                 <motion.span
-                  key={word}
+                  key={`${character}-${index}`}
                   variants={{
-                    hidden: { opacity: 0, y: 30 },
-                    visible: {
-                      opacity: 1,
-                      y: 0,
-                      transition: { duration: 0.6 },
-                    },
+                    hidden: { opacity: 0, y: 8 },
+                    visible: { opacity: 1, y: 0 },
                   }}
+                  className={character === "P" ? "brand-accent" : ""}
                 >
-                  {word}
+                  {character === " " ? "\u00a0" : character}
                 </motion.span>
               ))}
-            </motion.h1>
-            <p className="hero-role">
-              AI &amp; Data Science Student <span>|</span> Aspiring Data Analyst
-            </p>
-            <motion.p
-              className="hero-lede"
-              variants={reveal}
-              initial="hidden"
-              animate="visible"
-              transition={{ delay: 0.5 }}
+            </motion.a>
+            <div
+              id="portfolio-navigation"
+              className={`nav-links ${menuOpen ? "open" : ""}`}
             >
-              {profile.summary}
-            </motion.p>
-            <motion.div
-              className="hero-actions"
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.8 }}
-            >
-              <a className="button button-primary" href="#projects">
-                View Projects <ArrowDown size={17} />
-              </a>
-              <a className="button button-secondary" href={resumeUrl} download>
-                Download resume <FileDown size={17} />
-              </a>
-              <a className="text-link" href="#contact">
-                Contact Me <ArrowUpRight size={17} />
-              </a>
-            </motion.div>
-          </div>
-          <div className="hero-visual">
-            <div className="visual-grid" />
-            <div className="orbit orbit-one" />
-            <div className="orbit orbit-two" />
-            <motion.div
-              className="signal-card"
-              animate={{ y: [0, -10, 0] }}
-              transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-            >
-              <div className="signal-top">
-                <span>LIVE SIGNAL</span>
-                <span className="live-dot" />
-              </div>
-              <div className="signal-value">
-                +42.8<span>%</span>
-              </div>
-              <div className="signal-label">clarity gained</div>
-              <div className="bars">
-                {[36, 50, 43, 72, 58, 88, 76, 96].map((h, i) => (
-                  <i
-                    key={i}
-                    style={{ height: `${h}%`, animationDelay: `${i * 0.08}s` }}
-                  />
-                ))}
-              </div>
-            </motion.div>
-            <span className="float-tag tag-python">Python</span>
-            <span className="float-tag tag-ai">
-              <Sparkles size={13} /> Gen AI
-            </span>
-            <span className="float-tag tag-figma">Figma</span>
-            <div className="visual-caption">
-              <span>01</span>
-              <span>Curious by default.</span>
+              {nav.map((item) => (
+                <a
+                  key={item.id}
+                  className={activeSection === item.id ? "active" : ""}
+                  href={`#${item.id}`}
+                  aria-current={activeSection === item.id ? "page" : undefined}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    window.history.pushState(null, "", `#${item.id}`);
+                    document
+                      .getElementById(item.id)
+                      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    setActiveSection(item.id);
+                    setMenuOpen(false);
+                  }}
+                >
+                  {item.label}
+                </a>
+              ))}
             </div>
+            <div className="nav-tools">
+              <button
+                className="icon-btn menu-btn"
+                aria-label="Toggle menu"
+                aria-controls="portfolio-navigation"
+                aria-expanded={menuOpen}
+                onClick={() => setMenuOpen((open) => !open)}
+              >
+                {menuOpen ? <X /> : <Menu />}
+              </button>
+              <button
+                className="icon-btn icon-btn-glass theme-btn magnetic-btn"
+                aria-label="Toggle theme"
+                onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              >
+                <motion.span
+                  key={theme}
+                  initial={{ opacity: 0, rotate: -70, scale: 0.65 }}
+                  animate={{ opacity: 1, rotate: 0, scale: 1 }}
+                  transition={{ duration: 0.28, ease: "easeOut" }}
+                  aria-hidden="true"
+                >
+                  {theme === "dark" ? <Sun /> : <Moon />}
+                </motion.span>
+              </button>
+              <div className="nav-socials" aria-label="Social links">
+                <a
+                  className="icon-btn icon-btn-glass social-btn magnetic-btn"
+                  href={githubUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label="Open GitHub profile"
+                  title="GitHub"
+                >
+                  <Github size={18} />
+                </a>
+                <a
+                  className="icon-btn icon-btn-glass social-btn magnetic-btn"
+                  href={linkedinUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label="Open LinkedIn profile"
+                  title="LinkedIn"
+                >
+                  <Linkedin size={18} />
+                </a>
+              </div>
+              <a
+                className="nav-cta"
+                href="#contact"
+                onClick={() => setMenuOpen(false)}
+              >
+                Let's talk <ArrowUpRight size={13} />
+              </a>
+            </div>
+          </motion.nav>
+        </header>
+        <main id="top">
+          <div className="ai-field" aria-hidden="true">
+            <span className="ai-node node-one" />
+            <span className="ai-node node-two" />
+            <span className="ai-node node-three" />
+            <span className="ai-node node-four" />
+            <span className="ai-connection connection-one" />
+            <span className="ai-connection connection-two" />
+            <span className="ai-connection connection-three" />
           </div>
-        </section>
-        <section className="marquee">
-          <div className="marquee-track">
-            DATA ANALYTICS <span>✳</span> AI ENGINEERING <span>✳</span>{" "}
-            FULL-STACK <span>✳</span> PRODUCT DESIGN <span>✳</span> DATA
-            ANALYTICS <span>✳</span>
-          </div>
-        </section>
-        <section id="about" className="section container about">
-          <motion.div
-            className="section-label"
-            variants={reveal}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true }}
+          <motion.section
+            className="hero container"
+            initial={{ opacity: 0, y: 30 }}
+            animate={{
+              opacity: contentRevealed ? 1 : 0,
+              y: contentRevealed ? 0 : 30,
+            }}
+            transition={{ duration: 0.7, delay: 0.4, ease: "easeOut" }}
           >
-            01 / About
-          </motion.div>
-          <div className="about-grid">
-            <motion.div
-              className="portrait"
-              variants={reveal}
-              initial="hidden"
-              whileInView="visible"
-              whileHover={{ y: -8, rotate: -1 }}
-              viewport={{ once: true }}
-            >
-              <div className="portrait-inner">
-                <img src={portraitUrl} alt="Hariharan P" />
-                <div className="portrait-shade" />
-                <span className="portrait-scan" />
-                <span className="portrait-corner corner-top-left" />
-                <span className="portrait-corner corner-top-right" />
-                <span className="portrait-corner corner-bottom-left" />
-                <span className="portrait-corner corner-bottom-right" />
-              </div>
-              <div className="portrait-orbit" aria-hidden="true" />
-              <div className="portrait-meta" aria-hidden="true">
-                <span>HM / 26</span>
-                <span>DATA × AI</span>
-              </div>
-              <div className="availability">
-                <i /> Available for meaningful work
-              </div>
-            </motion.div>
-            <motion.div
-              className="about-copy"
-              variants={reveal}
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true }}
-            >
-              <h2>
-                Building with data.
-                <br />
-                <em>Designing with purpose.</em>
-              </h2>
-              <p>
-                I like working where disciplines overlap. My practice moves
-                between analytics, software, AI, and interface design, always
-                looking for the clearest path from a messy problem to a useful
-                outcome.
-              </p>
-              <p>
-                Right now I’m deepening my engineering foundations, shipping
-                small experiments, and learning how intelligent tools can make
-                digital products feel more human.
-              </p>
-              <div className="about-meta">
-                <span>
-                  <strong>Based in</strong> India / open to the world
-                </span>
-                <span>
-                  <strong>Currently</strong> learning in public
-                </span>
-              </div>
-            </motion.div>
-          </div>
-        </section>
-        <section id="skills" className="section section-tint">
-          <div className="container">
-            <motion.div
-              className="section-heading"
-              variants={reveal}
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true }}
-            >
-              <div className="section-label">02 / Toolkit</div>
-              <h2>
-                A versatile <em>toolkit</em>
-                <br />
-                for real problems.
-              </h2>
-            </motion.div>
-            <div className="skill-categories">
-              {skillCategories.map((category, categoryIndex) => {
-                const CategoryIcon = category.icon;
-                return (
-                  <motion.article
-                    className={`skill-category-card ${category.title === "Data Analytics" ? "core-category" : ""}`}
-                    key={category.title}
-                    initial={{ opacity: 0, y: 22 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    transition={{ delay: categoryIndex * 0.07 }}
-                    viewport={{ once: true }}
+            <div className="hero-copy">
+              <motion.p
+                className="eyebrow"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.2 }}
+              >
+                AI &amp; Data Science / Portfolio
+              </motion.p>
+              <motion.h1
+                initial="hidden"
+                animate="visible"
+                variants={{
+                  visible: { transition: { staggerChildren: 0.08 } },
+                }}
+              >
+                {["Hariharan", "P."].map((word) => (
+                  <motion.span
+                    key={word}
+                    variants={{
+                      hidden: { opacity: 0, y: 30 },
+                      visible: {
+                        opacity: 1,
+                        y: 0,
+                        transition: { duration: 0.6 },
+                      },
+                    }}
                   >
-                    <div className="skill-category-header">
-                      <span className="skill-category-icon">
-                        <CategoryIcon size={19} />
-                      </span>
-                      <span className="skill-category-number">
-                        0{categoryIndex + 1}
-                      </span>
-                    </div>
-                    <h3>{category.title}</h3>
-                    <div className="skill-badges">
-                      {category.skills.map((skill) => (
-                        <span
-                          className={coreSkills.has(skill) ? "core-skill" : ""}
-                          key={`${category.title}-${skill}`}
-                        >
-                          {skill}
-                        </span>
-                      ))}
-                    </div>
-                  </motion.article>
-                );
-              })}
+                    {word}
+                  </motion.span>
+                ))}
+              </motion.h1>
+              <p className="hero-role">
+                AI &amp; Data Science Student <span>|</span> Aspiring Data
+                Analyst
+              </p>
+              <motion.p
+                className="hero-lede"
+                variants={reveal}
+                initial="hidden"
+                animate="visible"
+                transition={{ delay: 0.5 }}
+              >
+                {profile.summary}
+              </motion.p>
+              <motion.div
+                className="hero-actions"
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.8 }}
+              >
+                <a className="button button-primary" href="#projects">
+                  View Projects <ArrowDown size={17} />
+                </a>
+                <a
+                  className="button button-secondary"
+                  href={resumeUrl}
+                  download
+                >
+                  Download resume <FileDown size={17} />
+                </a>
+              </motion.div>
             </div>
-          </div>
-        </section>
-        <section id="education" className="section container education">
+            <div className="hero-visual">
+              <div className="ai-visual-grid" aria-hidden="true" />
+              <motion.div
+                className="ai-core"
+                animate={{ y: [0, -10, 0], rotate: [0, 2, 0] }}
+                transition={{
+                  duration: 5,
+                  repeat: Infinity,
+                  ease: "easeInOut",
+                }}
+              >
+                <div className="ai-core-halo" aria-hidden="true" />
+                <div className="ai-bot-icon">
+                  <Bot size={58} strokeWidth={1.1} />
+                </div>
+                <span>AI AGENT / ONLINE</span>
+              </motion.div>
+              <motion.div
+                className="ai-orbit ai-orbit-one"
+                animate={{ rotate: 360 }}
+                transition={{ duration: 18, repeat: Infinity, ease: "linear" }}
+                aria-hidden="true"
+              >
+                <span className="ai-orbit-node ai-orbit-node-one">
+                  <Cpu size={16} />
+                </span>
+                <span className="ai-orbit-node ai-orbit-node-two">
+                  <Database size={15} />
+                </span>
+              </motion.div>
+              <motion.div
+                className="ai-orbit ai-orbit-two"
+                animate={{ rotate: -360 }}
+                transition={{ duration: 24, repeat: Infinity, ease: "linear" }}
+                aria-hidden="true"
+              >
+                <span className="ai-orbit-node ai-orbit-node-three">
+                  <Sparkles size={15} />
+                </span>
+              </motion.div>
+              <span className="ai-data-tag ai-data-tag-one">MODEL</span>
+              <span className="ai-data-tag ai-data-tag-two">DATA</span>
+              <span className="ai-data-tag ai-data-tag-three">IMPACT</span>
+              <div className="visual-caption">
+                <span>01</span>
+                <span>Curious by default.</span>
+              </div>
+            </div>
+          </motion.section>
           <motion.div
-            className="section-heading"
-            variants={reveal}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true }}
+            className="rest-content"
+            initial={{ opacity: 0 }}
+            animate={{
+              opacity: contentRevealed ? 1 : 0,
+            }}
+            transition={{ duration: 0.8, delay: 0.6, ease: "easeOut" }}
           >
-            <div>
-              <div className="section-label">03 / Education</div>
-              <h2>
-                Foundations for
-                <br />
-                <em>better systems.</em>
-              </h2>
-            </div>
-            <p>
-              Learning the fundamentals behind useful, intelligent software.
-            </p>
-          </motion.div>
-          <div className="education-timeline">
-            {[
-              {
-                period: "2023 — 2027",
-                level: "Undergraduate degree",
-                title: "B.Tech - Artificial Intelligence and Data Science",
-                institution:
-                  "Annapoorana Engineering College, Salem, Tamil Nadu",
-                result: "CGPA: 8.18 (as of Semester 6)",
-              },
-              {
-                period: "2022 — 2023",
-                level: "Higher Secondary (12th)",
-                title: "Municipal Boys Higher Secondary School",
-                institution: "Ammapet, Salem, Tamil Nadu",
-                result: "Percentage: 60%",
-              },
-              {
-                period: "2020 — 2021",
-                level: "Secondary School (10th)",
-                title: "Municipal Boys Higher Secondary School",
-                institution: "Ammapet, Salem, Tamil Nadu",
-                result: "Result: Pass",
-              },
-            ].map((education, index) => (
-              <motion.article
-                className="education-card"
-                key={education.title}
+            <section className="marquee">
+              <div className="marquee-track">
+                DATA ANALYTICS <span>✳</span> AI ENGINEERING <span>✳</span>{" "}
+                FULL-STACK <span>✳</span> PRODUCT DESIGN <span>✳</span> DATA
+                ANALYTICS <span>✳</span>
+              </div>
+            </section>
+            <section id="about" className="section container about">
+              <motion.div
+                className="section-label"
                 variants={reveal}
                 initial="hidden"
                 whileInView="visible"
-                transition={{ delay: index * 0.12 }}
                 viewport={{ once: true }}
               >
-                <div className="education-marker">
-                  <span>{String(index + 1).padStart(2, "0")}</span>
-                </div>
-                <div className="education-details">
-                  <div className="education-topline">
-                    <span className="education-period">{education.period}</span>
-                    <span className="education-level">{education.level}</span>
-                  </div>
-                  <h3>{education.title}</h3>
-                  <p>{education.institution}</p>
-                  <strong>{education.result}</strong>
-                </div>
-              </motion.article>
-            ))}
-          </div>
-        </section>
-        <section id="certifications" className="section certifications">
-          <div className="container">
-            <motion.div
-              className="section-heading"
-              variants={reveal}
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true }}
-            >
-              <div>
-                <div className="section-label">04 / Certifications</div>
-                <h2>
-                  Learning that
-                  <br />
-                  <em>ships.</em>
-                </h2>
-              </div>
-              <p>
-                Practical credentials across Agile, web development, and
-                programming.
-              </p>
-            </motion.div>
-            <div className="certification-grid">
-              {[
-                {
-                  provider: "L&T",
-                  title:
-                    "Fundamentals of Agile Methodology with DevOps Integration",
-                  detail:
-                    "Learned Agile and DevOps fundamentals with hands-on practice using Git and Git Bash to manage and push projects to GitHub.",
-                },
-                {
-                  provider: "George Academy",
-                  title: "Front-End Web Development",
-                  detail:
-                    "Gained practical knowledge of HTML, CSS, JavaScript, and responsive web development.",
-                },
-                {
-                  provider: "IBM",
-                  title: "C Programming",
-                  detail:
-                    "Learned C programming fundamentals and applied them by writing code and solving basic programming problems.",
-                },
-              ].map((certification, index) => (
-                <motion.article
-                  className="certification-card"
-                  key={certification.title}
-                  initial={{ opacity: 0, y: 24 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.1 }}
+                01 / About
+              </motion.div>
+              <div className="about-grid">
+                <motion.div
+                  className="portrait"
+                  variants={reveal}
+                  initial="hidden"
+                  whileInView="visible"
+                  whileHover={{ y: -8, rotate: -1 }}
                   viewport={{ once: true }}
                 >
-                  <div className="certification-number">0{index + 1}</div>
-                  <div className="certification-provider">
-                    {certification.provider}
+                  <div className="portrait-inner">
+                    <img src={portraitUrl} alt="Hariharan P" />
                   </div>
-                  <h3>{certification.title}</h3>
-                  <p>{certification.detail}</p>
-                  <span className="certification-mark">
-                    CERTIFIED / PRACTICAL
-                  </span>
-                </motion.article>
-              ))}
-            </div>
-          </div>
-        </section>
-        <section
-          id="achievements"
-          className="section section-tint achievements"
-        >
-          <div className="container">
-            <motion.div
-              className="section-heading"
-              variants={reveal}
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true }}
-            >
-              <div>
-                <div className="section-label">05 / Achievements</div>
-                <h2>
-                  Curiosity turned
-                  <br />
-                  into <em>outcomes.</em>
-                </h2>
-              </div>
-            </motion.div>
-            <div className="achievement-list">
-              {[
-                {
-                  title: "Visionary Innovators Award",
-                  event: "Hack Fest 2K25",
-                  detail:
-                    "Received the Visionary Innovators Award at Hack Fest 2K25 for developing an innovative solution with impactful implementation.",
-                },
-                {
-                  title: "Third Prize",
-                  event: "Intra-Symposium",
-                  detail:
-                    "Secured Third Prize for developing a Shoe Website Prototype during the Intra-Symposium.",
-                },
-              ].map((achievement, index) => (
-                <motion.article
-                  className="achievement-row"
-                  key={achievement.title}
-                  initial={{ opacity: 0, y: 24 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.14 }}
+                  <div className="availability">
+                    <i /> Available for meaningful work
+                  </div>
+                </motion.div>
+                <motion.div
+                  className="about-copy"
+                  variants={reveal}
+                  initial="hidden"
+                  whileInView="visible"
                   viewport={{ once: true }}
                 >
-                  <div className="achievement-badge">
-                    <span>0{index + 1}</span>
-                    <i />
-                  </div>
-                  <div className="achievement-content">
-                    <div className="achievement-event">{achievement.event}</div>
-                    <h3>{achievement.title}</h3>
-                    <p>{achievement.detail}</p>
-                    <span className="achievement-mark">
-                      RECOGNITION / VERIFIED
+                  <h2>
+                    Building with data.
+                    <br />
+                    <em>Designing with purpose.</em>
+                  </h2>
+                  <p>
+                    I like working where disciplines overlap. My practice moves
+                    between analytics, software, AI, and interface design,
+                    always looking for the clearest path from a messy problem to
+                    a useful outcome.
+                  </p>
+                  <p>
+                    Right now I’m deepening my engineering foundations, shipping
+                    small experiments, and learning how intelligent tools can
+                    make digital products feel more human.
+                  </p>
+                  <div className="about-meta">
+                    <span>
+                      <strong>Based in</strong> India / open to the world
+                    </span>
+                    <span>
+                      <strong>Currently</strong> learning in public
                     </span>
                   </div>
-                </motion.article>
-              ))}
-            </div>
-          </div>
-        </section>
-        <section id="projects" className="section container projects">
-          <motion.div
-            className="section-heading projects-head"
-            variants={reveal}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true }}
-          >
-            <div>
-              <div className="section-label">06 / Selected work</div>
-              <h2>
-                Small steps,
-                <br />
-                <em>useful outcomes.</em>
-              </h2>
-            </div>
-            <p>
-              A growing collection of projects that sit at the intersection of
-              curiosity and craft.
-            </p>
-          </motion.div>
-          <div className="filters">
-            {filters.map((item) => (
-              <button
-                key={item}
-                className={filter === item ? "active" : ""}
-                onClick={() => setFilter(item)}
-              >
-                {item}
-              </button>
-            ))}
-          </div>
-          <motion.div layout className="project-grid">
-            {shown.map((project, index) => (
-              <motion.article
-                layout
-                key={project.title}
-                className={`project-card ${index === 0 ? "featured" : ""} ${project.mini ? "mini-project" : ""}`}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.06 }}
+                </motion.div>
+              </div>
+            </section>
+            <section id="skills" className="section section-tint">
+              <div className="container">
+                <motion.div
+                  className="section-heading"
+                  variants={reveal}
+                  initial="hidden"
+                  whileInView="visible"
+                  viewport={{ once: true }}
+                >
+                  <div className="section-label">02 / Toolkit</div>
+                  <h2>
+                    A versatile <em>toolkit</em>
+                    <br />
+                    for real problems.
+                  </h2>
+                </motion.div>
+                <div className="skill-categories">
+                  {skillCategories.map((category, categoryIndex) => {
+                    const CategoryIcon = category.icon;
+                    return (
+                      <motion.article
+                        className={`skill-category-card ${category.title === "Data Analytics" ? "core-category" : ""}`}
+                        key={category.title}
+                        initial={{ opacity: 0, y: 22 }}
+                        whileInView={{ opacity: 1, y: 0 }}
+                        transition={{ delay: categoryIndex * 0.07 }}
+                        viewport={{ once: true }}
+                      >
+                        <div className="skill-category-header">
+                          <span className="skill-category-icon">
+                            <CategoryIcon size={19} />
+                          </span>
+                          <span className="skill-category-number">
+                            0{categoryIndex + 1}
+                          </span>
+                        </div>
+                        <h3>{category.title}</h3>
+                        <div className="skill-badges">
+                          {category.skills.map((skill) => (
+                            <span
+                              className={
+                                coreSkills.has(skill) ? "core-skill" : ""
+                              }
+                              key={`${category.title}-${skill}`}
+                            >
+                              {skill}
+                            </span>
+                          ))}
+                        </div>
+                      </motion.article>
+                    );
+                  })}
+                </div>
+              </div>
+            </section>
+            <section id="education" className="section container education">
+              <motion.div
+                className="section-heading"
+                variants={reveal}
+                initial="hidden"
+                whileInView="visible"
                 viewport={{ once: true }}
               >
-                <div className="project-image">
-                  <img src={project.image} alt="" loading="lazy" />
-                  <span className="project-index">0{index + 1}</span>
-                  <a
-                    href="#contact"
-                    className="project-link"
-                    aria-label={`Open ${project.title}`}
-                  >
-                    <ArrowUpRight />
-                  </a>
+                <div>
+                  <div className="section-label">03 / Education</div>
+                  <h2>
+                    Foundations for
+                    <br />
+                    <em>better systems.</em>
+                  </h2>
                 </div>
-                <div className="project-info">
-                  <div className="project-category">
-                    {project.category}
-                    {project.date && (
-                      <span className="project-date">{project.date}</span>
-                    )}
-                  </div>
-                  <h3>{project.title}</h3>
-                  <p>{project.desc}</p>
-                  <div className="project-foot">
-                    <div className="tags">
-                      {project.tags.map((tag) => (
-                        <span key={tag}>{tag}</span>
-                      ))}
-                    </div>
-                    <span className="outcome">{project.outcome}</span>
-                  </div>
-                </div>
-              </motion.article>
-            ))}
-          </motion.div>
-        </section>
-        <section id="experience" className="section section-dark">
-          <div className="container experience">
-            <motion.div
-              className="section-label"
-              variants={reveal}
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true }}
-            >
-              07 / Work experience
-            </motion.div>
-            <div className="experience-grid">
-              <div>
-                <h2>
-                  Real-world
-                  <br />
-                  <em>experience.</em>
-                </h2>
-                <p className="experience-lede">
-                  Turning classroom foundations into practical work across data
-                  science and front-end development.
+                <p>
+                  Learning the fundamentals behind useful, intelligent software.
                 </p>
-              </div>
-              <div className="timeline">
+              </motion.div>
+              <div className="education-timeline">
                 {[
                   {
-                    period: "Jun 2026 — Jul 2026",
-                    role: "Data Science Intern",
-                    company: "OdugaaTech Pvt. Ltd., Salem",
-                    highlights: [
-                      "Analyzed real-world datasets using Python and data analysis tools to identify meaningful insights.",
-                      "Performed data cleaning, preprocessing, and visualization to support data-driven analysis.",
-                      "Strengthened analytical, problem-solving, and data interpretation skills through structured datasets.",
-                    ],
+                    period: "2023 — 2027",
+                    level: "Undergraduate degree",
+                    title: "B.Tech - Artificial Intelligence and Data Science",
+                    institution:
+                      "Annapoorana Engineering College, Salem, Tamil Nadu",
+                    result: "CGPA: 8.18 (as of Semester 6)",
                   },
                   {
-                    period: "Jun 2025 — Jul 2025",
-                    role: "Front-End Web Development Intern",
-                    company: "ALGOJAXION Global Soft Pvt. Ltd., Salem",
-                    highlights: [
-                      "Developed responsive website interfaces using HTML, CSS, and JavaScript.",
-                      "Improved user experience by implementing responsive design principles.",
-                      "Collaborated with the team to enhance application functionality and performance.",
-                    ],
+                    period: "2022 — 2023",
+                    level: "Higher Secondary (12th)",
+                    title: "Municipal Boys Higher Secondary School",
+                    institution: "Ammapet, Salem, Tamil Nadu",
+                    result: "Percentage: 60%",
                   },
-                ].map((internship, index) => (
+                  {
+                    period: "2020 — 2021",
+                    level: "Secondary School (10th)",
+                    title: "Municipal Boys Higher Secondary School",
+                    institution: "Ammapet, Salem, Tamil Nadu",
+                    result: "Result: Pass",
+                  },
+                ].map((education, index) => (
                   <motion.article
-                    className="timeline-item internship-item"
-                    key={internship.role}
-                    initial={{ opacity: 0, x: 25 }}
-                    whileInView={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.14 }}
+                    className="education-card"
+                    key={`${education.period}-${education.title}`}
+                    variants={reveal}
+                    initial="hidden"
+                    whileInView="visible"
+                    transition={{ delay: index * 0.12 }}
                     viewport={{ once: true }}
                   >
-                    <div className="internship-marker">0{index + 1}</div>
-                    <div className="internship-content">
-                      <div className="internship-topline">
-                        <span>{internship.period}</span>
-                        <span>INTERNSHIP</span>
+                    <div className="education-marker">
+                      <span>{String(index + 1).padStart(2, "0")}</span>
+                    </div>
+                    <div className="education-details">
+                      <div className="education-topline">
+                        <span className="education-period">
+                          {education.period}
+                        </span>
+                        <span className="education-level">
+                          {education.level}
+                        </span>
                       </div>
-                      <h3>{internship.role}</h3>
-                      <p className="internship-company">{internship.company}</p>
-                      <ul>
-                        {internship.highlights.map((highlight) => (
-                          <li key={highlight}>{highlight}</li>
-                        ))}
-                      </ul>
+                      <h3>{education.title}</h3>
+                      <p>{education.institution}</p>
+                      <strong>{education.result}</strong>
                     </div>
                   </motion.article>
                 ))}
               </div>
-            </div>
-          </div>
-        </section>
-        <section id="contact" className="section contact container">
-          <motion.div
-            className="contact-copy"
-            variants={reveal}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true }}
-          >
-            <div className="section-label">08 / Contact</div>
-            <h2>
-              Have a good
-              <br />
-              <em>question?</em>
-            </h2>
-            <p>
-              I’m always interested in thoughtful problems, new perspectives,
-              and work that leaves things better than it found them.
-            </p>
-            <div className="contact-links">
-              <a href={resumeUrl} download>
-                <FileDown size={17} /> Download resume
-              </a>
-              <a href={`tel:${contactPhone.replace(/\s/g, "")}`}>
-                <Phone size={17} /> {contactPhone}
-              </a>
-              <a href={`mailto:${contactEmail}`}>
-                <Mail size={17} /> {contactEmail}
-              </a>
-              <a
-                href="https://maps.google.com/?q=Ammapet,Salem,Tamil+Nadu+636003"
-                target="_blank"
-                rel="noreferrer"
-              >
-                <MapPin size={17} /> {contactAddress}
-              </a>
-              <a href={githubUrl} target="_blank" rel="noreferrer">
-                <Github size={17} /> GitHub <ExternalLink size={13} />
-              </a>
-              <a href={linkedinUrl} target="_blank" rel="noreferrer">
-                <ExternalLink size={17} /> LinkedIn <ExternalLink size={13} />
-              </a>
-            </div>
-          </motion.div>
-          <motion.form
-            className="contact-form"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const formData = new FormData(e.currentTarget);
-              const subject = encodeURIComponent("Portfolio enquiry");
-              const body = encodeURIComponent(
-                `Name: ${formData.get("name")}\nEmail: ${formData.get("email")}\n\n${formData.get("message")}`,
-              );
-              window.location.href = `mailto:${contactEmail}?subject=${subject}&body=${body}`;
-              setSent(true);
-            }}
-            variants={reveal}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true }}
-          >
-            <label>
-              Name
-              <input
-                required
-                name="name"
-                autoComplete="name"
-                placeholder="Your name"
-              />
-            </label>
-            <label>
-              Email
-              <input
-                required
-                name="email"
-                type="email"
-                autoComplete="email"
-                placeholder="you@example.com"
-              />
-            </label>
-            <label>
-              What are you thinking about?
-              <textarea
-                required
-                name="message"
-                rows={4}
-                placeholder="A project, a collaboration, a hello..."
-              />
-            </label>
-            <button className="button button-primary" type="submit">
-              {sent ? (
-                <>
-                  Message sent <Check size={17} />
-                </>
-              ) : (
-                <>
-                  Send message <Send size={16} />
-                </>
-              )}
-            </button>
-          </motion.form>
-        </section>
-      </main>
-      <div className="chatbot">
-        <AnimatePresence>
-          {chatOpen && (
-            <motion.section
-              className="chat-panel"
-              initial={{ opacity: 0, y: 18, scale: 0.96 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 18, scale: 0.96 }}
-              aria-label={`${chatbotFullName}, Personal Portfolio Assistant`}
-            >
-              <div className="chat-header">
-                <div
-                  className="chat-avatar chat-avatar-symbol"
-                  aria-hidden="true"
+            </section>
+            <section id="certifications" className="section certifications">
+              <div className="container">
+                <motion.div
+                  className="section-heading"
+                  variants={reveal}
+                  initial="hidden"
+                  whileInView="visible"
+                  viewport={{ once: true }}
                 >
-                  ⌬
-                </div>
-                <div>
-                  <strong>{chatbotName}</strong>
-                  <span>
-                    <i /> Personal Portfolio Assistant
-                  </span>
-                </div>
-                <span className="chat-status-badge">⌬ ONLINE</span>
-                <button
-                  className="chat-close"
-                  type="button"
-                  title="Close HP AI"
-                  aria-label="Close HP AI chat"
-                  onClick={() => setChatOpen(false)}
-                >
-                  <X size={18} strokeWidth={2.5} />
-                </button>
-              </div>
-              <div className="chat-messages" aria-live="polite">
-                {chatMessages.map((message) => (
-                  <motion.div
-                    key={message.id}
-                    className={`chat-message ${message.sender}`}
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                  >
-                    <div className="chat-bubble-content">{message.text}</div>
-                    <span className="chat-time">{message.time}</span>
-                    {message.sender === "bot" && (
-                      <button
-                        type="button"
-                        className="chat-speaker"
-                        aria-label="Read HP AI reply aloud"
-                        onClick={() =>
-                          isSpeaking ? stopSpeaking() : speakText(message.text)
-                        }
-                      >
-                        {isSpeaking ? (
-                          <VolumeX size={12} />
-                        ) : (
-                          <Volume2 size={12} />
-                        )}
-                      </button>
-                    )}
-                  </motion.div>
-                ))}
-                {chatTyping && (
-                  <div className="chat-typing" aria-label="HP AI is thinking">
-                    <span className="chat-typing-label">HP AI thinking</span>
-                    <i />
-                    <i />
-                    <i />
+                  <div>
+                    <div className="section-label">04 / Certifications</div>
+                    <h2>
+                      Learning that
+                      <br />
+                      <em>ships.</em>
+                    </h2>
                   </div>
-                )}
-                <div ref={chatBottomRef} />
+                  <p>
+                    Practical credentials across Agile, web development, and
+                    programming.
+                  </p>
+                </motion.div>
+                <div className="certification-grid">
+                  {[
+                    {
+                      provider: "L&T",
+                      title:
+                        "Fundamentals of Agile Methodology with DevOps Integration",
+                      detail:
+                        "Learned Agile and DevOps fundamentals with hands-on practice using Git and Git Bash to manage and push projects to GitHub.",
+                    },
+                    {
+                      provider: "George Academy",
+                      title: "Front-End Web Development",
+                      detail:
+                        "Gained practical knowledge of HTML, CSS, JavaScript, and responsive web development.",
+                    },
+                    {
+                      provider: "IBM",
+                      title: "C Programming",
+                      detail:
+                        "Learned C programming fundamentals and applied them by writing code and solving basic programming problems.",
+                    },
+                  ].map((certification, index) => (
+                    <motion.article
+                      className="certification-card"
+                      key={certification.title}
+                      initial={{ opacity: 0, y: 24 }}
+                      whileInView={{ opacity: 1, y: 0 }}
+                      transition={{ delay: index * 0.1 }}
+                      viewport={{ once: true }}
+                    >
+                      <div className="certification-number">0{index + 1}</div>
+                      <div className="certification-provider">
+                        {certification.provider}
+                      </div>
+                      <h3>{certification.title}</h3>
+                      <p>{certification.detail}</p>
+                      <span className="certification-mark">
+                        CERTIFIED / PRACTICAL
+                      </span>
+                    </motion.article>
+                  ))}
+                </div>
               </div>
-              <div className="chat-quick-replies">
-                {hpAiSuggestedQuestions.map((prompt) => (
-                  <button key={prompt} onClick={() => sendChatMessage(prompt)}>
-                    {prompt}
+            </section>
+            <section
+              id="achievements"
+              className="section section-tint achievements"
+            >
+              <div className="container">
+                <motion.div
+                  className="section-heading"
+                  variants={reveal}
+                  initial="hidden"
+                  whileInView="visible"
+                  viewport={{ once: true }}
+                >
+                  <div>
+                    <div className="section-label">05 / Achievements</div>
+                    <h2>
+                      Curiosity turned
+                      <br />
+                      into <em>outcomes.</em>
+                    </h2>
+                  </div>
+                </motion.div>
+                <div className="achievement-list">
+                  {[
+                    {
+                      title: "Visionary Innovators Award",
+                      event: "Hack Fest 2K25",
+                      detail:
+                        "Received the Visionary Innovators Award at Hack Fest 2K25 for developing an innovative solution with impactful implementation.",
+                    },
+                    {
+                      title: "Third Prize",
+                      event: "Intra-Symposium",
+                      detail:
+                        "Secured Third Prize for developing a Shoe Website Prototype during the Intra-Symposium.",
+                    },
+                  ].map((achievement, index) => (
+                    <motion.article
+                      className="achievement-row"
+                      key={achievement.title}
+                      initial={{ opacity: 0, y: 24 }}
+                      whileInView={{ opacity: 1, y: 0 }}
+                      transition={{ delay: index * 0.14 }}
+                      viewport={{ once: true }}
+                    >
+                      <div className="achievement-badge">
+                        <span>0{index + 1}</span>
+                        <i />
+                      </div>
+                      <div className="achievement-content">
+                        <div className="achievement-event">
+                          {achievement.event}
+                        </div>
+                        <h3>{achievement.title}</h3>
+                        <p>{achievement.detail}</p>
+                        <span className="achievement-mark">
+                          RECOGNITION / VERIFIED
+                        </span>
+                      </div>
+                    </motion.article>
+                  ))}
+                </div>
+              </div>
+            </section>
+            <section id="projects" className="section container projects">
+              <motion.div
+                className="section-heading projects-head"
+                variants={reveal}
+                initial="hidden"
+                whileInView="visible"
+                viewport={{ once: true }}
+              >
+                <div>
+                  <div className="section-label">06 / Selected work</div>
+                  <h2>
+                    Small steps,
+                    <br />
+                    <em>useful outcomes.</em>
+                  </h2>
+                </div>
+                <p>
+                  A growing collection of projects that sit at the intersection
+                  of curiosity and craft.
+                </p>
+              </motion.div>
+              <div className="filters">
+                {filters.map((item) => (
+                  <button
+                    key={item}
+                    className={filter === item ? "active" : ""}
+                    onClick={() => setFilter(item)}
+                  >
+                    {item}
                   </button>
                 ))}
               </div>
-              <form
-                className="chat-form"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  sendChatMessage(chatInput);
-                }}
+              <motion.div layout className="project-grid">
+                {shown.map((project, index) => (
+                  <motion.article
+                    layout
+                    key={project.title}
+                    className={`project-card ${index === 0 ? "featured" : ""} ${project.mini ? "mini-project" : ""}`}
+                    initial={{ opacity: 0, y: 20 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.06 }}
+                    viewport={{ once: true }}
+                  >
+                    <div className="project-image">
+                      <img src={project.image} alt="" loading="lazy" />
+                      <span className="project-index">0{index + 1}</span>
+                      <a
+                        href="#contact"
+                        className="project-link"
+                        aria-label={`Open ${project.title}`}
+                      >
+                        <ArrowUpRight />
+                      </a>
+                    </div>
+                    <div className="project-info">
+                      <div className="project-category">
+                        {project.category}
+                        {project.date && (
+                          <span className="project-date">{project.date}</span>
+                        )}
+                      </div>
+                      <h3>{project.title}</h3>
+                      <p>{project.desc}</p>
+                      <div className="project-foot">
+                        <div className="tags">
+                          {project.tags.map((tag) => (
+                            <span key={tag}>{tag}</span>
+                          ))}
+                        </div>
+                        <span className="outcome">{project.outcome}</span>
+                      </div>
+                    </div>
+                  </motion.article>
+                ))}
+              </motion.div>
+            </section>
+            <section id="experience" className="section section-dark">
+              <div className="container experience">
+                <motion.div
+                  className="section-label"
+                  variants={reveal}
+                  initial="hidden"
+                  whileInView="visible"
+                  viewport={{ once: true }}
+                >
+                  07 / Work experience
+                </motion.div>
+                <div className="experience-grid">
+                  <div>
+                    <h2>
+                      Real-world
+                      <br />
+                      <em>experience.</em>
+                    </h2>
+                    <p className="experience-lede">
+                      Turning classroom foundations into practical work across
+                      data science and front-end development.
+                    </p>
+                  </div>
+                  <div className="timeline">
+                    {[
+                      {
+                        period: "Jun 2026 — Jul 2026",
+                        role: "Data Science Intern",
+                        company: "OdugaaTech Pvt. Ltd., Salem",
+                        highlights: [
+                          "Analyzed real-world datasets using Python and data analysis tools to identify meaningful insights.",
+                          "Performed data cleaning, preprocessing, and visualization to support data-driven analysis.",
+                          "Strengthened analytical, problem-solving, and data interpretation skills through structured datasets.",
+                        ],
+                      },
+                      {
+                        period: "Jun 2025 — Jul 2025",
+                        role: "Front-End Web Development Intern",
+                        company: "ALGOJAXION Global Soft Pvt. Ltd., Salem",
+                        highlights: [
+                          "Developed responsive website interfaces using HTML, CSS, and JavaScript.",
+                          "Improved user experience by implementing responsive design principles.",
+                          "Collaborated with the team to enhance application functionality and performance.",
+                        ],
+                      },
+                    ].map((internship, index) => (
+                      <motion.article
+                        className="timeline-item internship-item"
+                        key={internship.role}
+                        initial={{ opacity: 0, x: 25 }}
+                        whileInView={{ opacity: 1, x: 0 }}
+                        transition={{ delay: index * 0.14 }}
+                        viewport={{ once: true }}
+                      >
+                        <div className="internship-marker">0{index + 1}</div>
+                        <div className="internship-content">
+                          <div className="internship-topline">
+                            <span>{internship.period}</span>
+                            <span>INTERNSHIP</span>
+                          </div>
+                          <h3>{internship.role}</h3>
+                          <p className="internship-company">
+                            {internship.company}
+                          </p>
+                          <ul>
+                            {internship.highlights.map((highlight) => (
+                              <li key={highlight}>{highlight}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      </motion.article>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </section>
+            <section id="contact" className="section contact container">
+              <motion.div
+                className="contact-copy"
+                variants={reveal}
+                initial="hidden"
+                whileInView="visible"
+                viewport={{ once: true }}
               >
-                <button
-                  type="button"
-                  className={`voice-toggle ${isListening ? "active" : ""}`}
-                  aria-label={
-                    isListening
-                      ? "Stop HP AI voice input"
-                      : "Start HP AI voice input"
-                  }
-                  onClick={startVoiceCapture}
-                  disabled={!voiceSupported}
-                >
-                  {isListening ? <MicOff size={16} /> : <Mic size={16} />}
-                </button>
-                <textarea
-                  value={chatInput}
-                  onChange={(event) => setChatInput(event.target.value)}
-                  placeholder={
-                    voiceSupported
-                      ? "Ask a question..."
-                      : "Voice input unavailable"
-                  }
-                  aria-label="Ask a question"
-                  rows={1}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" && !event.shiftKey) {
-                      event.preventDefault();
-                      sendChatMessage(chatInput);
-                    }
-                  }}
-                />
-                <button type="submit" aria-label="Send question">
-                  <Send size={16} />
-                </button>
-              </form>
-              {(isListening || isSpeaking || speechError) && (
-                <div
-                  className={`chat-voice-status ${isListening ? "listening" : ""} ${isSpeaking ? "speaking" : ""}`}
-                  role="status"
-                  aria-live="polite"
-                >
-                  {isListening ? (
+                <div className="section-label">08 / Contact</div>
+                <h2>
+                  Have a good
+                  <br />
+                  <em>question?</em>
+                </h2>
+                <p>
+                  I’m always interested in thoughtful problems, new
+                  perspectives, and work that leaves things better than it found
+                  them.
+                </p>
+                <div className="contact-links">
+                  <a href={resumeUrl} download>
+                    <FileDown size={17} /> Download resume
+                  </a>
+                  <a href={`tel:${contactPhone.replace(/\s/g, "")}`}>
+                    <Phone size={17} /> {contactPhone}
+                  </a>
+                  <a href={`mailto:${contactEmail}`}>
+                    <Mail size={17} /> {contactEmail}
+                  </a>
+                  <a
+                    href="https://maps.google.com/?q=Ammapet,Salem,Tamil+Nadu+636003"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <MapPin size={17} /> {contactAddress}
+                  </a>
+                  <a href={githubUrl} target="_blank" rel="noreferrer">
+                    <Github size={17} /> GitHub <ExternalLink size={13} />
+                  </a>
+                  <a href={linkedinUrl} target="_blank" rel="noreferrer">
+                    <ExternalLink size={17} /> LinkedIn{" "}
+                    <ExternalLink size={13} />
+                  </a>
+                </div>
+              </motion.div>
+              <motion.form
+                className="contact-form"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const formData = new FormData(e.currentTarget);
+                  const subject = encodeURIComponent("Portfolio enquiry");
+                  const body = encodeURIComponent(
+                    `Name: ${formData.get("name")}\nEmail: ${formData.get("email")}\n\n${formData.get("message")}`,
+                  );
+                  window.location.href = `mailto:${contactEmail}?subject=${subject}&body=${body}`;
+                  setSent(true);
+                }}
+                variants={reveal}
+                initial="hidden"
+                whileInView="visible"
+                viewport={{ once: true }}
+              >
+                <label>
+                  Name
+                  <input
+                    required
+                    name="name"
+                    autoComplete="name"
+                    placeholder="Your name"
+                  />
+                </label>
+                <label>
+                  Email
+                  <input
+                    required
+                    name="email"
+                    type="email"
+                    autoComplete="email"
+                    placeholder="you@example.com"
+                  />
+                </label>
+                <label>
+                  What are you thinking about?
+                  <textarea
+                    required
+                    name="message"
+                    rows={4}
+                    placeholder="A project, a collaboration, a hello..."
+                  />
+                </label>
+                <button className="button button-primary" type="submit">
+                  {sent ? (
                     <>
-                      <Mic size={13} /> <strong>HP AI Listening...</strong>
-                      <span className="voice-wave" aria-hidden="true">
-                        <i />
-                        <i />
-                        <i />
-                        <i />
-                      </span>
-                    </>
-                  ) : isSpeaking ? (
-                    <>
-                      <Volume2 size={13} />{" "}
-                      <strong>HP AI is speaking...</strong>
-                      <span className="voice-wave" aria-hidden="true">
-                        <i />
-                        <i />
-                        <i />
-                        <i />
-                      </span>
+                      Message sent <Check size={17} />
                     </>
                   ) : (
-                    <span>{speechError}</span>
+                    <>
+                      Send message <Send size={16} />
+                    </>
                   )}
+                </button>
+              </motion.form>
+            </section>
+          </motion.div>
+        </main>
+        <div className="chatbot">
+          <AnimatePresence>
+            {chatOpen && (
+              <motion.section
+                className="chat-panel"
+                role="dialog"
+                aria-modal="false"
+                initial={{ opacity: 0, y: 18, scale: 0.96 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 18, scale: 0.96 }}
+                aria-label={`${chatbotFullName}, Personal Portfolio Assistant`}
+              >
+                <div className="chat-header">
+                  <div
+                    className="chat-avatar chat-avatar-symbol"
+                    aria-hidden="true"
+                  >
+                    ⌬
+                  </div>
+                  <div className="chat-identity">
+                    <strong>{chatbotName}</strong>
+                    <span>
+                      <i /> Personal Portfolio Assistant
+                    </span>
+                  </div>
+                  <span className="chat-status-badge" title="HP AI online">
+                    <i aria-hidden="true" /> ONLINE
+                  </span>
+                  <div className="chat-header-actions">
+                    <button
+                      className={`voice-settings ${voiceEnabled ? "active" : ""}`}
+                      type="button"
+                      title={
+                        voiceEnabled ? "Disable AI voice" : "Enable AI voice"
+                      }
+                      aria-label={
+                        voiceEnabled ? "Disable AI voice" : "Enable AI voice"
+                      }
+                      disabled={!speechSupported}
+                      onClick={() => {
+                        if (voiceEnabled) stopSpeaking();
+                        setVoiceEnabled((enabled) => !enabled);
+                        setSpeechError("");
+                      }}
+                    >
+                      {voiceEnabled ? (
+                        <Volume2 size={15} />
+                      ) : (
+                        <VolumeX size={15} />
+                      )}
+                    </button>
+                    <button
+                      className="voice-stop"
+                      type="button"
+                      title="Stop AI voice"
+                      aria-label="Stop AI voice"
+                      disabled={!isSpeaking}
+                      onClick={stopSpeaking}
+                    >
+                      <Square size={13} fill="currentColor" />
+                    </button>
+                    <button
+                      className="chat-close"
+                      type="button"
+                      title="Close HP AI"
+                      aria-label="Close HP AI chat"
+                      onClick={() => {
+                        stopSpeaking();
+                        setChatOpen(false);
+                      }}
+                    >
+                      <X size={18} strokeWidth={2.5} />
+                    </button>
+                  </div>
                 </div>
-              )}
-              <button
-                className="chat-reset"
-                onClick={() => {
-                  setChatMessages([initialChatMessage]);
-                  stopSpeaking();
-                }}
-              >
-                Reset conversation
-              </button>
-            </motion.section>
-          )}
-        </AnimatePresence>
-        <button
-          className="chat-launcher"
-          onClick={() => setChatOpen(!chatOpen)}
-          title={chatOpen ? "Close HP AI" : "Open HP AI"}
-          aria-label={chatOpen ? "Close HP AI chat" : "Open HP AI chat"}
-        >
-          <span className="chat-symbol" aria-hidden="true">
-            ⌬
-          </span>
-          {!chatOpen && <span className="chat-pulse" />}
-        </button>
-      </div>
-      <footer>
-        <div className="container footer">
-          <motion.span
-            className="brand brand-name"
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true }}
-            variants={{ visible: { transition: { staggerChildren: 0.06 } } }}
+                <div className="chat-messages" aria-live="polite">
+                  {chatMessages.map((message) => (
+                    <motion.div
+                      key={message.id}
+                      className={`chat-message ${message.sender}`}
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                    >
+                      <div className="chat-bubble-content">{message.text}</div>
+                      <span className="chat-time">{message.time}</span>
+                      {message.sender === "bot" && (
+                        <button
+                          type="button"
+                          className={`chat-speaker ${
+                            speakingMessageId === message.id ? "active" : ""
+                          }`}
+                          aria-label={
+                            speakingMessageId === message.id
+                              ? isSpeechPaused
+                                ? "Resume AI response"
+                                : "Pause AI response"
+                              : "Listen to AI response"
+                          }
+                          onClick={() => speakText(message.text, message.id)}
+                        >
+                          {speakingMessageId === message.id ? (
+                            isSpeechPaused ? (
+                              <Play size={12} fill="currentColor" />
+                            ) : (
+                              <Pause size={12} />
+                            )
+                          ) : (
+                            <Volume2 size={12} />
+                          )}
+                        </button>
+                      )}
+                    </motion.div>
+                  ))}
+                  {chatTyping && (
+                    <div className="chat-typing" aria-label="HP AI is thinking">
+                      <span className="chat-typing-label">HP AI thinking</span>
+                      <i />
+                      <i />
+                      <i />
+                    </div>
+                  )}
+                  <div ref={chatBottomRef} />
+                </div>
+                <div className="chat-quick-replies">
+                  {hpAiSuggestedQuestions.map((prompt) => (
+                    <button
+                      key={prompt}
+                      type="button"
+                      onClick={() => sendChatMessage(prompt)}
+                    >
+                      {prompt}
+                    </button>
+                  ))}
+                </div>
+                <form
+                  className="chat-form"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    sendChatMessage(chatInput);
+                  }}
+                >
+                  <button
+                    type="button"
+                    className={`voice-toggle ${isListening ? "active" : ""}`}
+                    aria-label={
+                      isListening
+                        ? "Stop HP AI voice input"
+                        : "Start HP AI voice input"
+                    }
+                    onClick={startVoiceCapture}
+                    disabled={!voiceSupported}
+                  >
+                    {isListening ? <MicOff size={16} /> : <Mic size={16} />}
+                  </button>
+                  <textarea
+                    value={chatInput}
+                    onChange={(event) => setChatInput(event.target.value)}
+                    placeholder={
+                      voiceSupported
+                        ? "Ask a question..."
+                        : "Voice input unavailable"
+                    }
+                    aria-label="Ask a question"
+                    rows={1}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !event.shiftKey) {
+                        event.preventDefault();
+                        sendChatMessage(chatInput);
+                      }
+                    }}
+                  />
+                  <button type="submit" aria-label="Send question">
+                    <Send size={16} />
+                  </button>
+                </form>
+                {(isListening || isSpeaking || speechError) && (
+                  <div
+                    className={`chat-voice-status ${isListening ? "listening" : ""} ${isSpeaking ? "speaking" : ""}`}
+                    role="status"
+                    aria-live="polite"
+                  >
+                    {isListening ? (
+                      <>
+                        <Mic size={13} /> <strong>HP AI Listening...</strong>
+                        <span className="voice-wave" aria-hidden="true">
+                          <i />
+                          <i />
+                          <i />
+                          <i />
+                        </span>
+                      </>
+                    ) : isSpeaking ? (
+                      <>
+                        <Volume2 size={13} />{" "}
+                        <strong>HP AI is speaking...</strong>
+                        <span className="voice-wave" aria-hidden="true">
+                          <i />
+                          <i />
+                          <i />
+                          <i />
+                        </span>
+                      </>
+                    ) : (
+                      <span>{speechError}</span>
+                    )}
+                  </div>
+                )}
+                <button
+                  className="chat-reset"
+                  onClick={() => {
+                    setChatMessages([initialChatMessage]);
+                    stopSpeaking();
+                  }}
+                >
+                  Reset conversation
+                </button>
+              </motion.section>
+            )}
+          </AnimatePresence>
+          <button
+            type="button"
+            className="chat-launcher"
+            onClick={() => {
+              if (chatOpen) stopSpeaking();
+              setChatOpen(!chatOpen);
+            }}
+            title={chatOpen ? "Close HP AI" : "Open HP AI"}
+            aria-label={chatOpen ? "Close HP AI chat" : "Open HP AI chat"}
           >
-            {"Hariharan P".split("").map((character, index) => (
-              <motion.span
-                key={`${character}-${index}`}
-                variants={{
-                  hidden: { opacity: 0, y: 8 },
-                  visible: { opacity: 1, y: 0 },
-                }}
-                className={character === "P" ? "brand-accent" : ""}
-              >
-                {character === " " ? "\u00a0" : character}
-              </motion.span>
-            ))}
-          </motion.span>
-          <span className="footer-quote">
-            The journey of a thousand miles begins with a single step
-            <Heart size={12} fill="currentColor" aria-label="with heart" />
-          </span>
-          <span className="footer-role">
-            AI &amp; Data Science | Data Analytics | Technology
-          </span>
-          <a href="#top">
-            Back to top <ArrowUp size={15} />
-          </a>
+            <span className="chat-symbol" aria-hidden="true">
+              ⌬
+            </span>
+            {!chatOpen && <span className="chat-pulse" />}
+          </button>
         </div>
-      </footer>
+        <footer>
+          <div className="container footer">
+            <motion.span
+              className="brand brand-name"
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true }}
+              variants={{ visible: { transition: { staggerChildren: 0.06 } } }}
+            >
+              {"Hariharan P".split("").map((character, index) => (
+                <motion.span
+                  key={`${character}-${index}`}
+                  variants={{
+                    hidden: { opacity: 0, y: 8 },
+                    visible: { opacity: 1, y: 0 },
+                  }}
+                  className={character === "P" ? "brand-accent" : ""}
+                >
+                  {character === " " ? "\u00a0" : character}
+                </motion.span>
+              ))}
+            </motion.span>
+            <span className="footer-quote">
+              The journey of a thousand miles begins with a single step
+              <Heart size={12} fill="currentColor" aria-label="with heart" />
+            </span>
+            <span className="footer-role">
+              AI &amp; Data Science | Data Analytics | Technology
+            </span>
+            <a href="#top">
+              Back to top <ArrowUp size={15} />
+            </a>
+          </div>
+        </footer>
+      </motion.div>
     </div>
   );
 }

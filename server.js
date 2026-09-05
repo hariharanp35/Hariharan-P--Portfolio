@@ -26,13 +26,14 @@ Portfolio owner details:
 - Contact: email hariharanp3506@gmail.com, phone +91 9047733143, address Ammapet, Salem, Tamil Nadu-636003, GitHub https://github.com/hariharanp35, LinkedIn https://www.linkedin.com/in/phariharan.
 
 Rules:
-- Answer in a clear, concise, professional, friendly tone.
-- Behave as HP AI: friendly, professional, helpful, concise, intelligent, and portfolio-focused. Answer naturally and conversationally.
-- Prioritize the facts above.
-- Do not invent personal information or credentials not listed above.
-- If the answer is not present in the portfolio, say: "I don't have that information available in this portfolio. You can contact Hariharan directly for more details."
-- Keep responses helpful for technical, educational, portfolio, project, and career-related questions.
-- Stay aligned with the portfolio contents and avoid generic AI filler.
+- You are a general-purpose AI assistant as well as Hariharan's portfolio and technology/career assistant.
+- Answer broad educational, informational, technical, career, and everyday questions using your available knowledge. Do not use a topic whitelist or reject a question because it is outside technology.
+- Answer questions about Computer Science, full-stack development, data analytics, UI/UX, AI/ML, programming, cloud, DevOps, databases, cybersecurity, science, mathematics, business, history, geography, and general knowledge when asked.
+- Answer in a clear, concise, professional, friendly tone and adapt explanations to the user's apparent level.
+- Maintain conversation context and resolve follow-up references such as "it", "this", "he", and "his" from the recent messages.
+- For Hariharan-specific facts, use only the portfolio facts above. Never invent personal information, experience, companies, projects, certifications, achievements, education, skills, or contact details.
+- If a Hariharan-specific fact is unavailable, say: "I don't have that information available in Hariharan's portfolio."
+- Stay accurate, acknowledge uncertainty, and avoid generic filler.
 `;
 
 const getOfflineReply = (question) => {
@@ -55,7 +56,32 @@ const getOfflineReply = (question) => {
   if (normalized.includes("power bi")) {
     return "Power BI is Microsoft's business intelligence platform for connecting to data, transforming it, building data models, and creating interactive reports and dashboards. DAX is used for calculated columns and measures.";
   }
-  return "I can answer general questions about data science, Python, SQL, machine learning, Power BI, and Excel, as well as questions about Hariharan's portfolio.";
+  if (normalized.includes("skill") || normalized.includes("technology")) {
+    return "Hariharan works across programming, databases, tools and technologies, backend, frontend, and data analytics. Core skills include Python, SQL, MySQL, Microsoft Excel, Power BI, JavaScript, REST APIs, Git, GitHub, Figma, Pandas, NumPy, and data visualization.";
+  }
+  if (normalized.includes("project") || normalized.includes("portfolio")) {
+    return "Hariharan's featured projects are a Sales Performance Analysis Dashboard using Power BI, Excel, and MySQL; Trick Bills, an expense tracking application using Python, HTML, CSS, and JavaScript; and a Shoe Store Website UI/UX Prototype created in Figma.";
+  }
+  if (normalized.includes("education") || normalized.includes("study")) {
+    return "Hariharan is pursuing a B.Tech in Artificial Intelligence and Data Science at Annapoorana Engineering College, Salem, from 2023 to 2027. His CGPA is 8.18 as of Semester 6.";
+  }
+  if (
+    normalized.includes("contact") ||
+    normalized.includes("email") ||
+    normalized.includes("reach")
+  ) {
+    return "Hariharan can be contacted at hariharanp3506@gmail.com or +91 9047733143. He is based in Ammapet, Salem, Tamil Nadu. His GitHub is https://github.com/hariharanp35 and LinkedIn is https://www.linkedin.com/in/phariharan.";
+  }
+  if (normalized.includes("certif")) {
+    return "Hariharan has certifications from L&T in Fundamentals of Agile Methodology with DevOps Integration, George Academy in Front-End Web Development, and IBM in C Programming.";
+  }
+  if (normalized.includes("experience") || normalized.includes("internship")) {
+    return "Hariharan completed a Data Science Internship at OdugaaTech Pvt. Ltd. in Jun-Jul 2026 and a Front-End Web Development Internship at ALGOJAXION Global Soft Pvt. Ltd. in Jun-Jul 2025.";
+  }
+  if (normalized.includes("hariharan") || normalized.includes("who are you")) {
+    return "Hariharan P is an engineering student focused on Data, AI, Code, and Design. He enjoys turning complex systems into useful, thoughtful digital experiences.";
+  }
+  return "Sorry, I couldn't process that request right now. The general AI service is not configured on this server. Please try again later or ask about Hariharan's portfolio information.";
 };
 
 app.get("/api/health", (_req, res) => {
@@ -97,8 +123,11 @@ app.post("/api/chat", async (req, res) => {
   }
 
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
+      signal: controller.signal,
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
@@ -113,6 +142,7 @@ app.post("/api/chat", async (req, res) => {
         ],
       }),
     });
+    clearTimeout(timeout);
 
     if (!response.ok) {
       console.error(
@@ -138,7 +168,9 @@ app.post("/api/chat", async (req, res) => {
     console.error("OpenAI request failed:", error);
     return res.status(500).json({
       error:
-        "Something went wrong while contacting the AI assistant. Please try again.",
+        error?.name === "AbortError"
+          ? "The AI request timed out. Please try again."
+          : "Something went wrong while contacting the AI assistant. Please try again.",
     });
   }
 });
