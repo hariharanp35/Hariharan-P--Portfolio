@@ -5,17 +5,24 @@ import {
   ArrowDown,
   ArrowUp,
   ArrowUpRight,
+  BadgeCheck,
   BarChart3,
+  Briefcase,
   Bot,
   Braces,
   Check,
+  Copy,
   Cpu,
   ExternalLink,
   FileDown,
+  Folder,
+  GraduationCap,
   Github,
   Heart,
   Database,
+  Home,
   Linkedin,
+  Layers3,
   Mail,
   MessageCircle,
   Menu,
@@ -28,6 +35,8 @@ import {
   Play,
   Send,
   Square,
+  Trophy,
+  UserRound,
   Volume2,
   VolumeX,
   Server,
@@ -223,7 +232,7 @@ const resumeUrl = new URL(
   "../Assets/Hariharan.P  Resume  (2).pdf",
   import.meta.url,
 ).href;
-const portraitUrl = new URL("../Assets/Black1.jpeg", import.meta.url).href;
+const portraitUrl = new URL("../Assets/hari-image-1.png", import.meta.url).href;
 const navSectionIds = [
   "about",
   "skills",
@@ -399,7 +408,7 @@ const askPortfolioAssistant = async (
     return data.reply?.trim() || getChatReply(sanitizedQuestion);
   } catch (error) {
     console.error(`${chatbotName} request failed:`, error);
-    return "Sorry, I couldn't process that right now. Please try again.";
+    return getChatReply(sanitizedQuestion);
   }
 };
 const reveal = {
@@ -495,6 +504,8 @@ function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const navWrapRef = useRef<HTMLElement | null>(null);
   const [sent, setSent] = useState(false);
+  const [emailCopied, setEmailCopied] = useState(false);
+  const [emailCopyFailed, setEmailCopyFailed] = useState(false);
   const [scrolled, setScrolled] = useState(0);
   const [chatOpen, setChatOpen] = useState(false);
   const [chatInput, setChatInput] = useState("");
@@ -642,16 +653,24 @@ function App() {
   const shown =
     filter === "All" ? projects : projects.filter((p) => p.category === filter);
   const nav = [
-    { label: "Home", id: "top" },
-    { label: "About", id: "about" },
-    { label: "Skills", id: "skills" },
-    { label: "Education", id: "education" },
-    { label: "Certifications", id: "certifications" },
-    { label: "Achievements", id: "achievements" },
-    { label: "Projects", id: "projects" },
-    { label: "Experience", id: "experience" },
-    { label: "Contact", id: "contact" },
+    { label: "Home", id: "top", icon: Home },
+    { label: "About", id: "about", icon: UserRound },
+    { label: "Skills", id: "skills", icon: Layers3 },
+    { label: "Education", id: "education", icon: GraduationCap },
+    { label: "Certifications", id: "certifications", icon: BadgeCheck },
+    { label: "Achievements", id: "achievements", icon: Trophy },
+    { label: "Projects", id: "projects", icon: Folder },
+    { label: "Experience", id: "experience", icon: Briefcase },
+    { label: "Contact", id: "contact", icon: Mail },
   ];
+  const navigateToSection = (id: string) => {
+    window.history.pushState(null, "", `/#${id}`);
+    document
+      .getElementById(id)
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setActiveSection(id);
+    setMenuOpen(false);
+  };
   const startVoiceCapture = () => {
     if (!voiceSupported || !recognitionRef.current) {
       setSpeechError("Speech recognition is not supported in this browser.");
@@ -792,6 +811,44 @@ function App() {
     ]);
     setChatTyping(false);
   };
+  const copyEmail = async () => {
+    try {
+      if (navigator.clipboard?.writeText) {
+        try {
+          await navigator.clipboard.writeText(contactEmail);
+        } catch {
+          const input = document.createElement("textarea");
+          input.value = contactEmail;
+          input.setAttribute("readonly", "true");
+          input.style.position = "fixed";
+          input.style.opacity = "0";
+          document.body.appendChild(input);
+          input.select();
+          if (!document.execCommand("copy"))
+            throw new Error("Copy command rejected");
+          input.remove();
+        }
+      } else {
+        const input = document.createElement("textarea");
+        input.value = contactEmail;
+        input.setAttribute("readonly", "true");
+        input.style.position = "fixed";
+        input.style.opacity = "0";
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand("copy");
+        input.remove();
+      }
+      setEmailCopied(true);
+      setEmailCopyFailed(false);
+      window.setTimeout(() => setEmailCopied(false), 2200);
+    } catch (error) {
+      console.warn("Email copy unavailable:", error);
+      setEmailCopied(false);
+      setEmailCopyFailed(true);
+      window.setTimeout(() => setEmailCopyFailed(false), 2200);
+    }
+  };
   return (
     <div className="app">
       <CustomCursor />
@@ -863,15 +920,6 @@ function App() {
             </div>
             <div className="nav-tools">
               <button
-                className="icon-btn menu-btn"
-                aria-label="Toggle menu"
-                aria-controls="portfolio-navigation"
-                aria-expanded={menuOpen}
-                onClick={() => setMenuOpen((open) => !open)}
-              >
-                {menuOpen ? <X /> : <Menu />}
-              </button>
-              <button
                 className="icon-btn icon-btn-glass theme-btn magnetic-btn"
                 aria-label="Toggle theme"
                 onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
@@ -885,6 +933,15 @@ function App() {
                 >
                   {theme === "dark" ? <Sun /> : <Moon />}
                 </motion.span>
+              </button>
+              <button
+                className="icon-btn menu-btn"
+                aria-label="Toggle menu"
+                aria-controls="portfolio-navigation"
+                aria-expanded={menuOpen}
+                onClick={() => setMenuOpen((open) => !open)}
+              >
+                {menuOpen ? <X /> : <Menu />}
               </button>
               <div className="nav-socials" aria-label="Social links">
                 <a
@@ -1085,9 +1142,7 @@ function App() {
                 >
                   <div className="portrait-inner">
                     <img src={portraitUrl} alt="Hariharan P" />
-                  </div>
-                  <div className="availability">
-                    <i /> Available for meaningful work
+              
                   </div>
                 </motion.div>
                 <motion.div
@@ -1874,38 +1929,128 @@ function App() {
             {!chatOpen && <span className="chat-pulse" />}
           </button>
         </div>
-        <footer>
-          <div className="container footer">
-            <motion.span
-              className="brand brand-name"
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true }}
-              variants={{ visible: { transition: { staggerChildren: 0.06 } } }}
-            >
-              {"Hariharan P".split("").map((character, index) => (
-                <motion.span
-                  key={`${character}-${index}`}
-                  variants={{
-                    hidden: { opacity: 0, y: 8 },
-                    visible: { opacity: 1, y: 0 },
-                  }}
-                  className={character === "P" ? "brand-accent" : ""}
+        <footer className="site-footer">
+          <div className="footer-watermark" aria-hidden="true">
+            Hariharan P
+          </div>
+          <div className="container footer-shell">
+            <div className="footer-main">
+              <div className="footer-profile">
+                <h2>Hariharan P</h2>
+                <p>Aspiring Fullstack Developer</p>
+              </div>
+              <nav className="footer-navigation" aria-label="Footer navigation">
+                <div className="footer-navigation-column">
+                  {nav.slice(0, 5).map((item) => (
+                    <a
+                      key={`footer-${item.id}`}
+                      href={`http://localhost:5173/#${item.id}`}
+                      className={activeSection === item.id ? "active" : ""}
+                      aria-current={
+                        activeSection === item.id ? "page" : undefined
+                      }
+                      onClick={(event) => {
+                        event.preventDefault();
+                        navigateToSection(item.id);
+                      }}
+                    >
+                      <item.icon
+                        size={15}
+                        strokeWidth={1.7}
+                        aria-hidden="true"
+                      />
+                      <span>{item.label}</span>
+                      <ArrowUpRight size={13} aria-hidden="true" />
+                    </a>
+                  ))}
+                </div>
+                <div className="footer-navigation-column">
+                  {nav.slice(5).map((item) => (
+                    <a
+                      key={`footer-${item.id}`}
+                      href={`http://localhost:5173/#${item.id}`}
+                      className={activeSection === item.id ? "active" : ""}
+                      aria-current={
+                        activeSection === item.id ? "page" : undefined
+                      }
+                      onClick={(event) => {
+                        event.preventDefault();
+                        navigateToSection(item.id);
+                      }}
+                    >
+                      <item.icon
+                        size={15}
+                        strokeWidth={1.7}
+                        aria-hidden="true"
+                      />
+                      <span>{item.label}</span>
+                      <ArrowUpRight size={13} aria-hidden="true" />
+                    </a>
+                  ))}
+                </div>
+              </nav>
+              <motion.div
+                className="footer-connect"
+                initial={{ opacity: 0, y: 18 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, amount: 0.3 }}
+                transition={{ duration: 0.55, delay: 0.1, ease: "easeOut" }}
+              >
+                <a
+                  className="footer-contact-link"
+                  href={githubUrl}
+                  target="_blank"
+                  rel="noreferrer"
                 >
-                  {character === " " ? "\u00a0" : character}
-                </motion.span>
-              ))}
-            </motion.span>
-            <span className="footer-quote">
-              The journey of a thousand miles begins with a single step
-              <Heart size={12} fill="currentColor" aria-label="with heart" />
-            </span>
-            <span className="footer-role">
-              AI &amp; Data Science | Data Analytics | Technology
-            </span>
-            <a href="#top">
-              Back to top <ArrowUp size={15} />
-            </a>
+                  <Github size={17} />
+                  <span>GitHub</span>
+                  <ArrowUpRight size={14} />
+                </a>
+                <a
+                  className="footer-contact-link"
+                  href={linkedinUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <Linkedin size={17} />
+                  <span>LinkedIn</span>
+                  <ArrowUpRight size={14} />
+                </a>
+                <a
+                  className="footer-contact-link"
+                  href={`mailto:${contactEmail}`}
+                >
+                  <Mail size={17} />
+                  <span>Email</span>
+                  <ArrowUpRight size={14} />
+                </a>
+                <button
+                  className="footer-copy-button"
+                  type="button"
+                  onClick={copyEmail}
+                >
+                  {emailCopied ? <Check size={16} /> : <Copy size={16} />}
+                  <span>
+                    {emailCopied
+                      ? "Email copied!"
+                      : emailCopyFailed
+                        ? "Copy unavailable"
+                        : "Copy email"}
+                  </span>
+                </button>
+              </motion.div>
+            </div>
+            <div className="footer-bottom">
+              <div className="footer-quote footer-quote-main">
+                The journey of a thousand miles begins with a single step
+                <Heart
+                  className="footer-heart"
+                  size={13}
+                  fill="currentColor"
+                  aria-label="with heart"
+                />
+              </div>
+            </div>
           </div>
         </footer>
       </motion.div>
